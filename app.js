@@ -1963,17 +1963,14 @@ async function loadJLPTReadingPassage() {
         return;
     }
 
-    let folderPath;
     let level;
     let certType;
 
     // JLPT 레벨 확인
     if (certification.startsWith('jlpt-')) {
         certType = 'jlpt';
-        level = certification.replace('jlpt-', '').toUpperCase();
-        folderPath = `jlpt/jlpt${level}/read.json`;
-    }
-    else {
+        level = certification.replace('jlpt-', '').toUpperCase(); // N1, N2, N3 등
+    } else {
         document.getElementById('readingText').innerHTML = `
             <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">
                 독해 문제를 풀려면 설정에서 JLPT 레벨을 선택하세요.
@@ -1983,15 +1980,40 @@ async function loadJLPTReadingPassage() {
         return;
     }
 
+    // Supabase 클라이언트 확인
+    if (!window.supabaseClient) {
+        console.error('Supabase 클라이언트가 로드되지 않았습니다.');
+        const readingTextDiv = document.getElementById('readingText');
+        let textBody = readingTextDiv.querySelector('#text-body');
+        if (!textBody) {
+            textBody = document.createElement('div');
+            textBody.id = 'text-body';
+            readingTextDiv.innerHTML = '';
+            readingTextDiv.appendChild(textBody);
+        }
+        textBody.innerHTML = `
+            <p style="color: var(--danger-color); text-align: center; padding: 2rem;">
+                데이터베이스 연결 오류가 발생했습니다.
+            </p>
+        `;
+        document.getElementById('questionsList').innerHTML = '';
+        return;
+    }
+
     try {
-        const response = await fetch(folderPath);
-        if (!response.ok) {
-            throw new Error(`파일을 찾을 수 없습니다: ${folderPath}`);
+        // Supabase에서 해당 레벨의 독해 문제 가져오기
+        const supabase = window.supabaseClient;
+        const { data: readingData, error } = await supabase
+            .from('jlpt_n1_reading')
+            .select('id, passage_text, title, source, level, questions')
+            .eq('level', level)
+            .limit(1); // 첫 번째 문제 사용 (나중에 랜덤 선택 가능)
+
+        if (error) {
+            throw new Error(`데이터베이스 조회 오류: ${error.message}`);
         }
 
-        const data = await response.json();
-        
-        if (!data.reading_quizes || data.reading_quizes.length === 0) {
+        if (!readingData || readingData.length === 0) {
             const readingTextDiv = document.getElementById('readingText');
             let textBody = readingTextDiv.querySelector('#text-body');
             if (!textBody) {
@@ -2006,15 +2028,24 @@ async function loadJLPTReadingPassage() {
             return;
         }
 
-        // 첫 번째 독해 문제 사용 (나중에 랜덤 선택 가능)
-        const readingQuiz = data.reading_quizes[0];
+        const readingRecord = readingData[0];
         
+        // Supabase 데이터 구조를 앱에서 사용하는 구조로 변환
+        const questions = readingRecord.questions.map((q, index) => ({
+            question: q.question_text,
+            options: q.options,
+            correct: q.correct_answer,
+            explanation: q.explanation || null
+        }));
+
         // 현재 독해 문제 저장
         AppState.currentReadingPassage = {
-            text: readingQuiz.body,
-            questions: readingQuiz.questions,
+            text: readingRecord.passage_text,
+            questions: questions,
             level: level,
-            certType: certType
+            certType: certType,
+            title: readingRecord.title,
+            source: readingRecord.source
         };
         AppState.readingAnswers = {}; // 답안 초기화
         
