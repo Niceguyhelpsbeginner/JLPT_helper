@@ -15,8 +15,6 @@ const AppState = {
     dictionary: null, // 로드된 사전 데이터
     compoundWords: null, // 복합 단어 사전 (일본어)
     singleCharacters: null, // 단일 한자 사전 (일본어)
-    toeicDictionary: null, // TOEIC 사전
-    topikDictionary: null, // TOPIK 사전 (한국어)
     currentQuiz: null,
     currentTest: null,
     currentFlashcardIndex: 0,
@@ -579,34 +577,8 @@ async function loadDictionary() {
 
         console.log(`📊 일본어 단어 조회 결과: ${japaneseWords?.length || 0}개 (총 ${jaCount || 0}개)`);
 
-        // 영어 단어 로드 (TOEIC)
-        const { data: englishWords, error: enError, count: enCount } = await supabase
-            .from('words')
-            .select('*', { count: 'exact' })
-            .eq('language', 'en');
-
-        if (enError) {
-            console.error('❌ 영어 단어 로드 오류:', enError);
-            console.error('오류 상세:', JSON.stringify(enError, null, 2));
-        } else {
-            console.log(`📊 영어 단어 조회 결과: ${englishWords?.length || 0}개 (총 ${enCount || 0}개)`);
-        }
-
-        // 한국어 단어 로드 (TOPIK)
-        const { data: koreanWords, error: koError, count: koCount } = await supabase
-            .from('words')
-            .select('*', { count: 'exact' })
-            .eq('language', 'ko');
-
-        if (koError) {
-            console.error('❌ 한국어 단어 로드 오류:', koError);
-            console.error('오류 상세:', JSON.stringify(koError, null, 2));
-        } else {
-            console.log(`📊 한국어 단어 조회 결과: ${koreanWords?.length || 0}개 (총 ${koCount || 0}개)`);
-        }
-
         // 데이터가 없는 경우 JSON 파일 사용
-        if ((!japaneseWords || japaneseWords.length === 0) && (!englishWords || englishWords.length === 0)) {
+        if (!japaneseWords || japaneseWords.length === 0) {
             console.warn('⚠️ Supabase에 데이터가 없습니다. JSON 파일을 사용합니다.');
             await loadDictionaryFromJSON();
             return;
@@ -619,8 +591,6 @@ async function loadDictionary() {
         // 합성어와 단일 한자 모두 사용
         AppState.compoundWords = { words: compoundWordsList };
         AppState.singleCharacters = { words: singleCharactersList };
-        AppState.toeicDictionary = { words: englishWords || [] };
-        AppState.topikDictionary = { words: koreanWords || [] };
 
         // 기존 호환성을 위해 통합 사전도 유지 (단일 한자만)
         AppState.dictionary = {
@@ -629,7 +599,7 @@ async function loadDictionary() {
             ]
         };
 
-        console.log(`✅ 사전 로드 완료: 일본어 한자 ${singleCharactersList.length}개, 영어 ${englishWords?.length || 0}개, 한국어 ${koreanWords?.length || 0}개`);
+        console.log(`✅ 사전 로드 완료: 일본어 한자 ${singleCharactersList.length}개`);
     } catch (error) {
         console.error('❌ 사전 로드 오류:', error);
         console.error('오류 스택:', error.stack);
@@ -661,26 +631,6 @@ async function loadDictionaryFromJSON() {
             AppState.compoundWords = { words: [] };
         }
         
-        // TOEIC 사전 로드
-        const toeicResponse = await fetch('toeic/vocabulary/dictionary.json');
-        if (toeicResponse.ok) {
-            const toeicData = await toeicResponse.json();
-            AppState.toeicDictionary = toeicData;
-        } else {
-            console.warn('TOEIC 사전 파일을 찾을 수 없습니다.');
-            AppState.toeicDictionary = { words: [] };
-        }
-        
-        // TOPIK 사전 로드
-        const topikResponse = await fetch('topik/vocabulary/dictionary.json');
-        if (topikResponse.ok) {
-            const topikData = await topikResponse.json();
-            AppState.topikDictionary = topikData;
-        } else {
-            console.warn('TOPIK 사전 파일을 찾을 수 없습니다.');
-            AppState.topikDictionary = { words: [] };
-        }
-        
         // 기존 호환성을 위해 통합 사전도 유지 (단일 한자만)
         AppState.dictionary = {
             words: [
@@ -691,8 +641,6 @@ async function loadDictionaryFromJSON() {
         console.error('JSON 사전 로드 오류:', error);
         AppState.compoundWords = { words: [] };
         AppState.singleCharacters = { words: [] };
-        AppState.toeicDictionary = { words: [] };
-        AppState.topikDictionary = { words: [] };
         AppState.dictionary = { words: [] };
     }
 }
@@ -700,32 +648,19 @@ async function loadDictionaryFromJSON() {
 // 사전 검색
 async function searchDictionary() {
     const query = document.getElementById('dictSearchInput').value.trim();
-    const language = document.getElementById('dictLanguage').value;
     
     if (!query) return;
 
     const resultDiv = document.getElementById('dictResult');
     resultDiv.innerHTML = '<div class="dict-placeholder">검색 중...</div>';
 
-    // 검색 기록에 추가
-    addToSearchHistory(query, language);
+    // 검색 기록에 추가 (일본어로 고정)
+    addToSearchHistory(query, 'ja');
 
     try {
-        let result;
-        if (language === 'ja') {
-            // 일본어: 로컬 사전에서 검색
-            result = searchLocalDictionary(query);
-        } else if (language === 'en') {
-            // 영어: TOEIC 사전에서 검색
-            result = searchToeicDictionary(query);
-        } else if (language === 'ko') {
-            // 한국어: TOPIK 사전에서 검색
-            result = searchTopikDictionary(query);
-        } else {
-            // 다른 언어는 기존 시뮬레이션 사용
-            result = await mockDictionarySearch(query, language);
-        }
-        displayDictionaryResult(result, query, language);
+        // 일본어: 로컬 사전에서 검색
+        const result = searchLocalDictionary(query);
+        displayDictionaryResult(result, query, 'ja');
     } catch (error) {
         console.error('검색 오류:', error);
         resultDiv.innerHTML = `
@@ -817,115 +752,6 @@ function searchInMemory(word) {
     };
 }
 
-// TOEIC 사전에서 검색
-// TOPIK 사전 검색 함수
-function searchTopikDictionary(word) {
-    // 메모리에 로드된 데이터에서 검색
-    if (!AppState.topikDictionary?.words || AppState.topikDictionary.words.length === 0) {
-        return {
-            error: true,
-            message: 'TOPIK 사전이 로드되지 않았습니다.'
-        };
-    }
-    
-    const searchWord = word.trim();
-    const isJapaneseInput = isJapanese(word);
-    
-    // 일본어로 검색 (의미 필드에서)
-    if (isJapaneseInput) {
-        let foundWord = AppState.topikDictionary.words.find(w => 
-            w.meaning === searchWord || w.meaning.includes(searchWord) || searchWord.includes(w.meaning)
-        );
-        
-        if (foundWord) {
-            return {
-                word: foundWord.word,
-                meaning: foundWord.meaning,
-                pronunciation: foundWord.pronunciation || null,
-                level: foundWord.level || null,
-                example: foundWord.example || null,
-                error: false
-            };
-        }
-    } else {
-        // 한국어 단어로 검색
-        let foundWord = AppState.topikDictionary.words.find(w => 
-            w.word === searchWord
-        );
-        
-        // 부분 일치 검색
-        if (!foundWord) {
-            foundWord = AppState.topikDictionary.words.find(w => 
-                w.word.includes(searchWord) || searchWord.includes(w.word)
-            );
-        }
-        
-        if (foundWord) {
-            return {
-                word: foundWord.word,
-                meaning: foundWord.meaning,
-                pronunciation: foundWord.pronunciation || null,
-                level: foundWord.level || null,
-                example: foundWord.example || null,
-                error: false
-            };
-        }
-    }
-    
-    return {
-        error: true,
-        message: '검색 결과를 찾을 수 없습니다.'
-    };
-}
-
-function searchToeicDictionary(word) {
-    // 메모리에 로드된 데이터에서 검색
-    if (!AppState.toeicDictionary?.words || AppState.toeicDictionary.words.length === 0) {
-        return {
-            error: true,
-            message: 'TOEIC 사전이 로드되지 않았습니다.'
-        };
-    }
-    
-    // 영어 단어로 검색 (대소문자 무시)
-    const searchWord = word.toLowerCase().trim();
-    let foundWord = AppState.toeicDictionary.words.find(w => 
-        w.word.toLowerCase() === searchWord
-    );
-    
-    // 부분 일치 검색
-    if (!foundWord) {
-        foundWord = AppState.toeicDictionary.words.find(w => 
-            w.word.toLowerCase().includes(searchWord) || 
-            searchWord.includes(w.word.toLowerCase())
-        );
-    }
-    
-    // 한국어 의미로 검색
-    if (!foundWord) {
-        foundWord = AppState.toeicDictionary.words.find(w => 
-            w.meaning.includes(word) || word.includes(w.meaning)
-        );
-    }
-    
-    if (foundWord) {
-        return {
-            word: foundWord.word,
-            meaning: foundWord.meaning,
-            pronunciation: foundWord.pronunciation || null,
-            example: foundWord.example || null,
-            synonyms: foundWord.synonyms || null,
-            level: foundWord.level || null,
-            type: foundWord.type || null,
-            error: false
-        };
-    }
-    
-    return {
-        error: true,
-        message: '검색 결과를 찾을 수 없습니다.'
-    };
-}
 
 // 사전 검색 시뮬레이션 (다른 언어용)
 async function mockDictionarySearch(word, lang) {
@@ -1010,7 +836,7 @@ function displayDictionaryResult(result, word, lang) {
             }
         }
     }
-    // 영어 (TOEIC) 특수 정보 표시
+    // 일본어 특수 정보 표시
     else if (lang === 'en') {
         if (result.error) {
             html += `<div style="margin: 1rem 0; padding: 1rem; background: #fee2e2; border-radius: 8px; color: #991b1b;">
@@ -2133,7 +1959,7 @@ function showQuizResult() {
     localStorage.setItem('quizScores', JSON.stringify(scores));
 }
 
-// JLPT/TOEIC 레벨에 따른 독해 지문 로드
+// JLPT 레벨에 따른 독해 지문 로드
 async function loadJLPTReadingPassage() {
     const certification = AppState.settings.targetCertification;
     
@@ -2166,16 +1992,10 @@ async function loadJLPTReadingPassage() {
         level = certification.replace('jlpt-', '').toUpperCase();
         folderPath = `jlpt/jlpt${level}/read.json`;
     }
-    // TOEIC 확인
-    else if (certification.startsWith('toeic')) {
-        certType = 'toeic';
-        level = certification.replace('toeic-', '').toUpperCase() || 'READING';
-        folderPath = `toeic/reading/read.json`;
-    }
     else {
         document.getElementById('readingText').innerHTML = `
             <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">
-                독해 문제를 풀려면 설정에서 JLPT 또는 TOEIC 레벨을 선택하세요.
+                독해 문제를 풀려면 설정에서 JLPT 레벨을 선택하세요.
             </p>
         `;
         document.getElementById('questionsList').innerHTML = '';
@@ -2272,25 +2092,12 @@ function displayReadingPassage(passage) {
         Object.keys(AppState.readingAnswers).length === passage.questions.length;
     
     // 모든 문제를 다 풀었을 때만 단어 호버 기능 추가
-    if (allQuestionsAnswered) {
-        if (passage.certType === 'toeic' && AppState.toeicDictionary?.words && AppState.toeicDictionary.words.length > 0) {
-            // TOEIC 영어 지문
-            console.log('TOEIC 단어 호버 기능 활성화, 사전 단어 수:', AppState.toeicDictionary.words.length);
-            formattedText = addEnglishWordHoverToText(formattedText);
-        } else if (passage.certType === 'topik' && AppState.topikDictionary?.words && AppState.topikDictionary.words.length > 0) {
-            // TOPIK 한국어 지문
-            console.log('TOPIK 단어 호버 기능 활성화, 사전 단어 수:', AppState.topikDictionary.words.length);
-            formattedText = addKoreanWordHoverToText(formattedText);
-        }
-        // JLPT는 addKanjiHover로 처리 (텍스트 삽입 후)
-    }
+    // JLPT는 addKanjiHover로 처리 (텍스트 삽입 후)
     
     // 자격증 레벨 표시
     let finalHtml = `<p>${formattedText}</p>`;
     if (passage.level) {
-        let certName = 'JLPT';
-        if (passage.certType === 'toeic') certName = 'TOEIC';
-        else if (passage.certType === 'topik') certName = 'TOPIK';
+        const certName = 'JLPT';
         const levelBadge = `<div style="margin-bottom: 1rem;">
             <span style="padding: 0.25rem 0.75rem; background: var(--primary-color); color: white; border-radius: 12px; font-size: 0.85rem; font-weight: 600;">
                 ${certName} ${passage.level}
@@ -2341,16 +2148,6 @@ function displayReadingPassage(passage) {
             // JLPT: 한자 호버 기능 추가 (내부에서 이벤트도 연결됨)
             setTimeout(() => {
                 addKanjiHover(readingTextDiv);
-            }, 100);
-        } else if (passage.certType === 'toeic') {
-            // TOEIC: 영어 단어 호버 이벤트 연결
-            setTimeout(() => {
-                attachWordHoverEvents();
-            }, 100);
-        } else if (passage.certType === 'topik') {
-            // TOPIK: 한국어 단어 호버 이벤트 연결
-            setTimeout(() => {
-                attachKoreanWordHoverEvents();
             }, 100);
         }
         
@@ -2444,24 +2241,6 @@ function getCurrentUserLanguage() {
     return 'ko';
 }
 
-// 영어 단어의 일본어 뜻 찾기
-function findJapaneseMeaningForEnglishWord(englishWord) {
-    // TOEIC 사전에서 영어 단어 찾기
-    if (AppState.toeicDictionary?.words) {
-        const wordData = AppState.toeicDictionary.words.find(w => 
-            w.word.toLowerCase() === englishWord.toLowerCase()
-        );
-        
-        if (wordData) {
-            // TOEIC 사전에 일본어 뜻 필드가 있으면 사용
-            if (wordData.japaneseMeaning) {
-                return wordData.japaneseMeaning;
-            }
-        }
-    }
-    
-    return null;
-}
 
 // 언어 쌍 테이블 이름 결정 (텍스트 언어 -> 사용자 언어)
 function getLanguagePairTable(textLanguage, userLanguage) {
@@ -2543,7 +2322,7 @@ function getWordMeaningForLanguage(wordData, targetLanguage) {
     
     // 사용자가 선택한 언어에 따라 다른 뜻 표시
     if (targetLanguage === 'ja') {
-        // 일본어로 표시: TOEIC 사전에 일본어 뜻 필드가 있으면 사용
+        // 일본어로 표시
         if (wordData.japaneseMeaning) {
             meaning = wordData.japaneseMeaning;
         }
@@ -2565,152 +2344,6 @@ function getWordMeaningForLanguage(wordData, targetLanguage) {
     return meaning;
 }
 
-// 영어 텍스트에 단어 호버 기능 추가
-function addEnglishWordHoverToText(text) {
-    if (!AppState.toeicDictionary?.words || AppState.toeicDictionary.words.length === 0) {
-        console.warn('TOEIC 사전이 로드되지 않았습니다.');
-        return text;
-    }
-
-    // 사용자가 선택한 언어 가져오기
-    const userLanguage = getCurrentUserLanguage();
-
-    // HTML 태그를 임시로 보호
-    const htmlTagRegex = /<[^>]+>/g;
-    const htmlTags = [];
-    let tagIndex = 0;
-    
-    let protectedText = text.replace(htmlTagRegex, (match) => {
-        htmlTags[tagIndex] = match;
-        return `__HTML_TAG_${tagIndex++}__`;
-    });
-
-    // 사전의 단어들을 길이 순으로 정렬 (짧은 단어부터 매칭 - 중복 방지를 위해)
-    // 짧은 단어를 먼저 처리하면 긴 단어 안에 포함된 짧은 단어도 처리 가능
-    const sortedWords = [...AppState.toeicDictionary.words].sort((a, b) => a.word.length - b.word.length);
-    
-    // 이미 처리된 위치 추적 (중복 방지)
-    const processedPositions = new Set();
-    let totalMatches = 0;
-    
-    sortedWords.forEach(wordData => {
-        const word = wordData.word.toLowerCase();
-        // 사용자 언어에 맞는 뜻 가져오기
-        const meaning = getWordMeaningForLanguage(wordData, userLanguage);
-        const pronunciation = wordData.pronunciation || '';
-        
-        // 단어 경계를 고려한 정규식 생성 (대소문자 무시)
-        const escapedWord = escapeRegex(word);
-        const testRegex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
-        
-        // 모든 매칭 위치를 먼저 찾기
-        const matches = [];
-        let match;
-        let testCount = 0;
-        
-        // 정규식의 lastIndex를 초기화하기 위해 새로 생성
-        while ((match = testRegex.exec(protectedText)) !== null) {
-            testCount++;
-            const index = match.index;
-            const matchedWord = match[0];
-            
-            // 현재 위치 주변의 텍스트 확인 (앞뒤로 충분히 확인)
-            const checkStart = Math.max(0, index - 500);
-            const checkEnd = Math.min(protectedText.length, index + matchedWord.length + 500);
-            const surroundingText = protectedText.substring(checkStart, checkEnd);
-            
-            // HTML 태그 안에 있는지 확인 (더 정확한 체크)
-            // <span class="word-hoverable" 태그가 현재 위치 이전에 닫히지 않고 열려있는지 확인
-            const beforeCurrent = protectedText.substring(0, index);
-            const openTagCount = (beforeCurrent.match(/<span class="word-hoverable"/g) || []).length;
-            const closeTagCount = (beforeCurrent.match(/<\/span>/g) || []).length;
-            const isInsideTag = openTagCount > closeTagCount;
-            
-            // __HTML_TAG__ 플레이스홀더 안에 있는지 확인
-            const beforeTag = protectedText.substring(Math.max(0, index - 100), index);
-            const afterTag = protectedText.substring(index + matchedWord.length, Math.min(protectedText.length, index + matchedWord.length + 100));
-            const isInPlaceholder = beforeTag.match(/__HTML_TAG_\d+__$/) || afterTag.match(/^__HTML_TAG_\d+__/);
-            
-            // 단어가 이미 처리된 span 태그 안에 있는지 확인 (더 정확한 방법)
-            // 현재 위치에서 가장 가까운 열린 태그를 찾기
-            const lastOpenTagIndex = beforeCurrent.lastIndexOf('<span class="word-hoverable"');
-            const lastCloseTagIndex = beforeCurrent.lastIndexOf('</span>');
-            const isInsideProcessedTag = lastOpenTagIndex > lastCloseTagIndex && lastOpenTagIndex !== -1;
-            
-            // 이미 처리된 위치인지 확인 (더 정확한 체크)
-            let isProcessed = false;
-            for (let i = index; i < index + matchedWord.length; i++) {
-                if (processedPositions.has(i)) {
-                    isProcessed = true;
-                    break;
-                }
-            }
-            
-            // HTML 태그나 플레이스홀더 안에 있지 않고, 이미 처리되지 않았으면 추가
-            if (!isInsideTag && !isInPlaceholder && !isInsideProcessedTag && !isProcessed) {
-                matches.push({ index, word: matchedWord, length: matchedWord.length });
-            }
-        }
-        
-        if (testCount > 0 && matches.length === 0) {
-            console.log(`단어 "${word}"는 ${testCount}번 매칭되었지만 모두 이미 처리되었거나 HTML 태그 안에 있습니다.`);
-        } else if (matches.length > 0) {
-            console.log(`단어 "${word}": ${matches.length}개 매칭`);
-        }
-        
-        totalMatches += matches.length;
-        
-        // 뒤에서부터 처리 (인덱스가 변경되지 않도록)
-        matches.reverse().forEach(({ index, word: matchedWord, length }) => {
-            // 단어를 호버 가능한 태그로 감싸기
-            const before = protectedText.substring(0, index);
-            const wordText = protectedText.substring(index, index + length);
-            const after = protectedText.substring(index + length);
-            
-            protectedText = before + 
-                `<span class="word-hoverable" data-word="${escapeHtml(matchedWord)}" data-meaning="${escapeHtml(meaning)}" data-pronunciation="${escapeHtml(pronunciation || '')}" data-text-language="en">${wordText}</span>` + 
-                after;
-            
-            // 처리된 위치 기록
-            for (let i = index; i < index + length; i++) {
-                processedPositions.add(i);
-            }
-        });
-    });
-
-    console.log(`영어 단어 호버: 총 ${totalMatches}개의 단어가 매칭되었습니다.`);
-
-    // HTML 태그 복원
-    htmlTags.forEach((tag, idx) => {
-        protectedText = protectedText.replace(`__HTML_TAG_${idx}__`, tag);
-    });
-
-    return protectedText;
-}
-
-// 한국어 텍스트에 단어 호버 기능 추가
-function addKoreanWordHoverToText(text) {
-    if (!AppState.topikDictionary?.words || AppState.topikDictionary.words.length === 0) {
-        console.warn('TOPIK 사전이 로드되지 않았습니다.');
-        return text;
-    }
-
-    // HTML 태그를 임시로 보호
-    const htmlTagRegex = /<[^>]+>/g;
-    const htmlTags = [];
-    let tagIndex = 0;
-    
-    let protectedText = text.replace(htmlTagRegex, (match) => {
-        htmlTags[tagIndex] = match;
-        return `__HTML_TAG_${tagIndex++}__`;
-    });
-
-    // 사전의 단어들을 길이 순으로 정렬 (짧은 단어부터 매칭)
-    const sortedWords = [...AppState.topikDictionary.words].sort((a, b) => a.word.length - b.word.length);
-    
-    // 이미 처리된 위치 추적 (중복 방지)
-    const processedPositions = new Set();
-    let totalMatches = 0;
     
     sortedWords.forEach(wordData => {
         const word = wordData.word;
@@ -2782,53 +2415,6 @@ function addKoreanWordHoverToText(text) {
     return protectedText;
 }
 
-// 한국어 단어 호버 이벤트 연결
-function attachKoreanWordHoverEvents() {
-    const hoverableWords = document.querySelectorAll('.word-hoverable-korean');
-    console.log(`한국어 단어 호버 이벤트 연결: ${hoverableWords.length}개의 호버 가능한 단어를 찾았습니다.`);
-    
-    hoverableWords.forEach(wordSpan => {
-        // 이미 이벤트가 연결된 경우 건너뛰기
-        if (wordSpan.dataset.eventsAttached === 'true') {
-            return;
-        }
-        
-        // 한국어 단어용 이벤트 연결
-        wordSpan.addEventListener('mouseenter', showKoreanWordTooltip);
-        wordSpan.addEventListener('mouseleave', hideWordTooltip);
-        wordSpan.dataset.eventsAttached = 'true';
-    });
-}
-
-// 한국어 단어 툴팁 표시 (비동기 - 언어 쌍별 테이블 사용)
-async function showKoreanWordTooltip(e) {
-    const wordSpan = e.target;
-    const word = wordSpan.dataset.word || wordSpan.textContent.trim();
-    let pronunciation = wordSpan.dataset.pronunciation;
-    
-    // 텍스트 언어는 한국어
-    const textLanguage = 'ko';
-    
-    // 사용자가 선택한 언어 가져오기
-    const userLanguage = getCurrentUserLanguage();
-    
-    let meaning = '';
-    
-    // 언어 쌍별 테이블에서 뜻 가져오기
-    const result = await getWordMeaningFromLanguagePair(word, textLanguage, userLanguage);
-    
-    if (result) {
-        meaning = result.meaning;
-        if (result.pronunciation) {
-            pronunciation = result.pronunciation;
-        }
-    } else {
-        // 언어 쌍별 테이블에서 찾지 못한 경우 data-meaning 사용 (폴백)
-        meaning = wordSpan.dataset.meaning || '';
-    }
-    
-    // 기존 툴팁 제거
-    hideWordTooltip();
     
     // 툴팁 생성
     const tooltip = document.createElement('div');
@@ -2905,21 +2491,6 @@ async function showWordTooltip(e) {
             pronunciation = result.pronunciation;
         }
     } else {
-        // 언어 쌍별 테이블에서 찾지 못한 경우 폴백
-        // TOEIC 사전에서 단어 찾기 (기존 방식)
-        if (AppState.toeicDictionary?.words && textLanguage === 'en') {
-            const wordData = AppState.toeicDictionary.words.find(w => 
-                w.word.toLowerCase() === word.toLowerCase()
-            );
-            if (wordData) {
-                // 사용자 언어에 맞는 뜻 가져오기
-                meaning = getWordMeaningForLanguage(wordData, userLanguage);
-                if (!pronunciation && wordData.pronunciation) {
-                    pronunciation = wordData.pronunciation;
-                }
-            }
-        }
-        
         // 여전히 찾지 못한 경우 data-meaning 사용 (최종 폴백)
         if (!meaning) {
             meaning = wordSpan.dataset.meaning || '';
@@ -3343,7 +2914,7 @@ async function handleImageUpload(e) {
 
         // 텍스트 언어 감지 (일본어 문자 포함 여부로 판단)
         const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(cleanedText);
-        const certType = hasJapanese ? 'jlpt' : 'toeic';
+        const certType = hasJapanese ? 'jlpt' : 'jlpt'; // JLPT 전용
 
         // certType 저장
         AppState.currentReadingPassage.certType = certType;
@@ -3373,10 +2944,6 @@ async function displayExtractedText(text, certType) {
         // 비동기로 단어 호버 기능 추가
         await new Promise(resolve => setTimeout(resolve, 100)); // DOM 업데이트 대기
         
-        if (certType === 'toeic' && AppState.toeicDictionary?.words && AppState.toeicDictionary.words.length > 0) {
-            // TOEIC 영어 지문
-            formattedText = addEnglishWordHoverToText(formattedText);
-        }
         // JLPT는 addKanjiHover로 처리 (텍스트 삽입 후)
 
         // 지문 표시
@@ -3428,10 +2995,6 @@ async function displayExtractedText(text, certType) {
             if (textBody) {
                 addKanjiHover(readingTextDiv);
             }
-        } else if (certType === 'toeic') {
-            // TOEIC인 경우 영어 단어 호버 이벤트 연결
-            await new Promise(resolve => setTimeout(resolve, 100)); // DOM 업데이트 대기
-            attachWordHoverEvents();
         }
         
         // 단어 정보 로딩 완료 알림
@@ -3923,12 +3486,6 @@ function generateLevelTestQuestionPool(language, nativeLanguage = 'ko') {
     if (language === 'ja') {
         words = AppState.singleCharacters?.words || [];
         console.log(`일본어 단어 데이터: ${words.length}개`);
-    } else if (language === 'en') {
-        words = AppState.toeicDictionary?.words || [];
-        console.log(`영어 단어 데이터: ${words.length}개`);
-    } else if (language === 'zh') {
-        words = AppState.topikDictionary?.words || [];
-        console.log(`중국어 단어 데이터: ${words.length}개`);
     } else {
         words = AppState.vocabulary || [];
         console.log(`단어장 데이터: ${words.length}개`);
@@ -4627,11 +4184,7 @@ function renderVocabularyList() {
         'jlpt-n4': 'JLPT N4',
         'jlpt-n3': 'JLPT N3',
         'jlpt-n2': 'JLPT N2',
-        'jlpt-n1': 'JLPT N1',
-        'toeic-reading': 'TOEIC Reading',
-        'hsk-1': 'HSK 1급',
-        'hsk-2': 'HSK 2급',
-        'hsk-3': 'HSK 3급'
+        'jlpt-n1': 'JLPT N1'
     };
     const targetCertLabel = typeof t === 'function' ? t('targetCertificationLabel') : '목표 자격증:';
     document.getElementById('currentCertification').textContent = `${targetCertLabel} ${certNames[certification] || certification}`;
@@ -4643,11 +4196,7 @@ function renderVocabularyList() {
         // JLPT 단어 (단일 한자만 사용 - 상용한자 2136자)
         const singleChars = AppState.singleCharacters?.words || [];
         words = [...singleChars];
-    } else if (certification.startsWith('toeic')) {
-        // TOEIC 단어
-        words = AppState.toeicDictionary?.words || [];
-    } else if (certification.startsWith('hsk')) {
-        // HSK 단어 (현재 데이터 없음, 추후 추가 가능)
+    } else {
         words = [];
     }
     
