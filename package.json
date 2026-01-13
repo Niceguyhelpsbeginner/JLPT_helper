@@ -1,9 +1,8 @@
 {
-  "name": "foreign_lang_helper",
+  "name": "jlpt_study",
   "version": "1.0.0",
-  "description": "외국어 학습 도우미",
+  "description": "JLPT 학습 도우미",
   "scripts": {
-    "migrate": "node migrate_data.js",
     "check-data": "node check_supabase_data.js",
     "build": "echo 'Build completed - static files ready for deployment'"
   },

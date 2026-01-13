@@ -14,8 +14,7 @@
     <script src="https://unpkg.com/@popperjs/core@2"></script>
     <script src="https://unpkg.com/tippy.js@6"></script>
     <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/themes/light-border.css">
-    <!-- 다국어 지원 -->
-    <script src="i18n.js"></script>
+    
 </head>
 <body>
     <div class="container">
@@ -47,7 +46,7 @@
             <section id="home-page" class="page active">
                 <div class="welcome-card">
                     <h2>환영합니다! 👋</h2>
-                    <p>외국어 학습을 시작해보세요.</p>
+                    <p>JLPT 학습을 시작해보세요.</p>
                 </div>
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -486,7 +485,7 @@
                     <!-- 필수 온보딩이므로 닫기 버튼 없음 -->
                 </div>
                 <div class="modal-body">
-                    <p style="margin-bottom: 1.5rem;">어떤 외국어 자격증을 취득하고 싶으신가요? (복수 선택 가능)</p>
+                    <p style="margin-bottom: 1.5rem;">어떤 JLPT 레벨을 목표로 하시나요? (복수 선택 가능)</p>
                     <div class="form-group">
                         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-top: 1rem;">
                             <label style="display: flex; align-items: center; cursor: pointer; padding: 0.75rem; border: 2px solid var(--border-color); border-radius: 8px; transition: all 0.2s;">
@@ -494,17 +493,8 @@
                                 <span>🇯🇵 JLPT (일본어능력시험)</span>
                             </label>
                             <label style="display: flex; align-items: center; cursor: pointer; padding: 0.75rem; border: 2px solid var(--border-color); border-radius: 8px; transition: all 0.2s;">
-                                <input type="checkbox" name="certification" value="toeic" style="margin-right: 0.5rem;">
-                                <span>🇺🇸 TOEIC (토익)</span>
-                            </label>
                             <label style="display: flex; align-items: center; cursor: pointer; padding: 0.75rem; border: 2px solid var(--border-color); border-radius: 8px; transition: all 0.2s;">
-                                <input type="checkbox" name="certification" value="topik" style="margin-right: 0.5rem;">
-                                <span>🇰🇷 TOPIK (한국어능력시험)</span>
-                            </label>
                             <label style="display: flex; align-items: center; cursor: pointer; padding: 0.75rem; border: 2px solid var(--border-color); border-radius: 8px; transition: all 0.2s;">
-                                <input type="checkbox" name="certification" value="hsk" style="margin-right: 0.5rem;">
-                                <span>🇨🇳 HSK (중국어능력시험)</span>
-                            </label>
                         </div>
                     </div>
                     <div id="certificationError" style="color: var(--danger-color); margin-top: 0.5rem; display: none;"></div>
@@ -581,11 +571,6 @@
                             <option value="zh">🇨🇳 中文</option>
                         </select>
                         <small style="color: var(--text-secondary); display: block; margin-top: 0.5rem;">
-                            서비스 인터페이스 언어를 선택하세요. 토익 지문의 단어 뜻도 이 언어로 표시됩니다.
-                        </small>
-                    </div>
-                    <div class="form-group">
-                        <label>목표 자격증</label>
                         <select id="targetCertification">
                             <option value="none">없음</option>
                             <option value="jlpt-n5">JLPT N5</option>
@@ -593,16 +578,16 @@
                             <option value="jlpt-n3">JLPT N3</option>
                             <option value="jlpt-n2">JLPT N2</option>
                             <option value="jlpt-n1">JLPT N1</option>
-                            <option value="toeic-reading">TOEIC Reading</option>
-                            <option value="topik-1">TOPIK 1급</option>
-                            <option value="topik-2">TOPIK 2급</option>
-                            <option value="topik-3">TOPIK 3급</option>
-                            <option value="topik-4">TOPIK 4급</option>
-                            <option value="topik-5">TOPIK 5급</option>
-                            <option value="topik-6">TOPIK 6급</option>
-                            <option value="hsk-1">HSK 1급</option>
-                            <option value="hsk-2">HSK 2급</option>
-                            <option value="hsk-3">HSK 3급</option>
+                            
+                            
+                            
+                            
+                            
+                            
+                            
+                            
+                            
+                            
                         </select>
                     </div>
                     <div class="form-group">

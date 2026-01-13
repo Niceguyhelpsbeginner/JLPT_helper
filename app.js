@@ -15,9 +15,6 @@ const AppState = {
     dictionary: null, // 로드된 사전 데이터
     compoundWords: null, // 복합 단어 사전 (일본어)
     singleCharacters: null, // 단일 한자 사전 (일본어)
-    toeicDictionary: null, // TOEIC 사전
-    topikDictionary: null, // TOPIK 사전 (한국어)
-    currentQuiz: null,
     currentTest: null,
     currentFlashcardIndex: 0,
     currentReadingPassage: null,
@@ -619,8 +616,8 @@ async function loadDictionary() {
         // 합성어와 단일 한자 모두 사용
         AppState.compoundWords = { words: compoundWordsList };
         AppState.singleCharacters = { words: singleCharactersList };
-        AppState.toeicDictionary = { words: englishWords || [] };
-        AppState.topikDictionary = { words: koreanWords || [] };
+
+
 
         // 기존 호환성을 위해 통합 사전도 유지 (단일 한자만)
         AppState.dictionary = {
@@ -661,24 +658,10 @@ async function loadDictionaryFromJSON() {
             AppState.compoundWords = { words: [] };
         }
         
-        // TOEIC 사전 로드
-        const toeicResponse = await fetch('toeic/vocabulary/dictionary.json');
-        if (toeicResponse.ok) {
-            const toeicData = await toeicResponse.json();
-            AppState.toeicDictionary = toeicData;
-        } else {
-            console.warn('TOEIC 사전 파일을 찾을 수 없습니다.');
-            AppState.toeicDictionary = { words: [] };
+
         }
         
-        // TOPIK 사전 로드
-        const topikResponse = await fetch('topik/vocabulary/dictionary.json');
-        if (topikResponse.ok) {
-            const topikData = await topikResponse.json();
-            AppState.topikDictionary = topikData;
-        } else {
-            console.warn('TOPIK 사전 파일을 찾을 수 없습니다.');
-            AppState.topikDictionary = { words: [] };
+
         }
         
         // 기존 호환성을 위해 통합 사전도 유지 (단일 한자만)
@@ -691,8 +674,6 @@ async function loadDictionaryFromJSON() {
         console.error('JSON 사전 로드 오류:', error);
         AppState.compoundWords = { words: [] };
         AppState.singleCharacters = { words: [] };
-        AppState.toeicDictionary = { words: [] };
-        AppState.topikDictionary = { words: [] };
         AppState.dictionary = { words: [] };
     }
 }
@@ -715,10 +696,7 @@ async function searchDictionary() {
         if (language === 'ja') {
             // 일본어: 로컬 사전에서 검색
             result = searchLocalDictionary(query);
-        } else if (language === 'en') {
-            // 영어: TOEIC 사전에서 검색
-            result = searchToeicDictionary(query);
-        } else if (language === 'ko') {
+ else if (language === 'ko') {
             // 한국어: TOPIK 사전에서 검색
             result = searchTopikDictionary(query);
         } else {
