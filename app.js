@@ -52,12 +52,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
     
-    // 언어 설정 로드 및 적용
-    const savedLanguage = localStorage.getItem('appLanguage') || 'ko';
-    if (typeof setLanguage === 'function') {
-        setLanguage(savedLanguage);
-    }
-    
     // Supabase Auth 상태 확인
     if (window.supabaseClient) {
         const { data: { session } } = await window.supabaseClient.auth.getSession();
@@ -365,11 +359,7 @@ function initializeEventListeners() {
     document.getElementById('knowBtn').addEventListener('click', () => markWord(true));
     document.getElementById('dontKnowBtn').addEventListener('click', () => markWord(false));
     
-    // 언어 선택 변경 시 플래시카드 업데이트
-    document.getElementById('learnLanguage')?.addEventListener('change', () => {
-        AppState.currentFlashcardIndex = 0;
-        updateFlashcard();
-    });
+    // 한국인 전용 서비스이므로 언어 선택 기능 제거됨
 
     // 퀴즈
     document.getElementById('startQuizBtn').addEventListener('click', startQuiz);
@@ -894,9 +884,9 @@ function displayDictionaryResult(result, word, lang) {
     }
 }
 
-// 검색 기록에 추가
+// 검색 기록에 추가 (한국인 전용 서비스이므로 항상 일본어)
 function addToSearchHistory(word, lang) {
-    const entry = { query: word, language: lang, date: new Date().toISOString() };
+    const entry = { query: word, language: 'ja', date: new Date().toISOString() };
     AppState.searchHistory.unshift(entry);
     if (AppState.searchHistory.length > 20) {
         AppState.searchHistory = AppState.searchHistory.slice(0, 20);
@@ -904,10 +894,8 @@ function addToSearchHistory(word, lang) {
     saveData(); // Supabase에 저장됨
     renderSearchHistory();
     
-    // 일본어 검색인 경우 플래시카드에 자동 추가
-    if (lang === 'ja') {
-        addSearchedWordToFlashcard(word);
-    }
+    // 일본어 검색이므로 플래시카드에 자동 추가
+    addSearchedWordToFlashcard(word);
 }
 
 // 검색한 단어를 플래시카드에 추가
@@ -960,10 +948,9 @@ function renderSearchHistory() {
     ).join('');
 }
 
-// 검색 기록에서 검색
+// 검색 기록에서 검색 (한국인 전용 서비스이므로 항상 일본어)
 function searchFromHistory(word, lang) {
     document.getElementById('dictSearchInput').value = word;
-    document.getElementById('dictLanguage').value = lang;
     searchDictionary();
 }
 
@@ -1362,15 +1349,13 @@ async function attachCompoundWordHoverEvents(container) {
         // 텍스트 언어는 일본어
         const textLanguage = 'ja';
         
-        // 사용자가 선택한 언어 가져오기
-        const userLanguage = getCurrentUserLanguage();
+        // 사용자 언어는 항상 한국어 (한국인 전용 서비스)
+        const userLanguage = 'ko';
         
-        // 언어 쌍별 테이블에서 뜻 가져오기 (사용자 언어가 일본어가 아닌 경우)
-        if (userLanguage !== 'ja') {
-            const result = await getWordMeaningFromLanguagePair(compoundWord, textLanguage, userLanguage);
-            if (result && result.meaning) {
-                meaning = result.meaning;
-            }
+        // 언어 쌍별 테이블에서 뜻 가져오기 (일본어 -> 한국어)
+        const result = await getWordMeaningFromLanguagePair(compoundWord, textLanguage, userLanguage);
+        if (result && result.meaning) {
+            meaning = result.meaning;
         }
         
         // 각 한자의 뜻 가져오기
@@ -1382,12 +1367,10 @@ async function attachCompoundWordHoverEvents(container) {
             if (kanjiData) {
                 kanjiMeaning = kanjiData.meaning || '';
                 
-                // 언어 쌍별 테이블에서 뜻 가져오기
-                if (userLanguage !== 'ja') {
-                    const result = await getWordMeaningFromLanguagePair(kanji, textLanguage, userLanguage);
-                    if (result && result.meaning) {
-                        kanjiMeaning = result.meaning;
-                    }
+                // 언어 쌍별 테이블에서 뜻 가져오기 (일본어 -> 한국어)
+                const result = await getWordMeaningFromLanguagePair(kanji, textLanguage, userLanguage);
+                if (result && result.meaning) {
+                    kanjiMeaning = result.meaning;
                 }
             }
             
@@ -1500,15 +1483,13 @@ async function attachSingleKanjiHoverEvents(container) {
     // 텍스트 언어는 일본어
     const textLanguage = 'ja';
     
-    // 사용자가 선택한 언어 가져오기
-    const userLanguage = getCurrentUserLanguage();
+    // 사용자 언어는 항상 한국어 (한국인 전용 서비스)
+    const userLanguage = 'ko';
     
-    // 언어 쌍별 테이블에서 뜻 가져오기 (사용자 언어가 일본어가 아닌 경우)
-    if (userLanguage !== 'ja') {
-            const result = await getWordMeaningFromLanguagePair(kanji, textLanguage, userLanguage);
-        if (result && result.meaning) {
-            meaning = result.meaning;
-        }
+    // 언어 쌍별 테이블에서 뜻 가져오기 (일본어 -> 한국어)
+    const result = await getWordMeaningFromLanguagePair(kanji, textLanguage, userLanguage);
+    if (result && result.meaning) {
+        meaning = result.meaning;
     }
     
     // 한자 데이터에서 추가 정보 가져오기
@@ -1717,10 +1698,10 @@ function displayFlashcardQuiz(word, allWords) {
 }
 
 function getFilteredWords() {
-    const lang = document.getElementById('learnLanguage')?.value || 'en';
     const cert = AppState.settings.targetCertification;
     
-    let words = AppState.vocabulary.filter(w => w.language === lang);
+    // 한국인 전용 서비스이므로 일본어 단어만 사용
+    let words = AppState.vocabulary.filter(w => w.language === 'ja');
     
     // 자격증 필터링
     if (cert !== 'none') {
@@ -2220,24 +2201,8 @@ function displayReadingPassage(passage) {
 }
 
 
-// 현재 사용자가 선택한 언어 가져오기
+// 현재 사용자가 선택한 언어 가져오기 (한국인 전용 서비스이므로 항상 한국어)
 function getCurrentUserLanguage() {
-    // localStorage에서 먼저 확인 (가장 신뢰할 수 있는 소스)
-    const savedLanguage = localStorage.getItem('appLanguage');
-    if (savedLanguage) {
-        console.log(`🌐 getCurrentUserLanguage: localStorage에서 언어 가져옴: ${savedLanguage}`);
-        return savedLanguage;
-    }
-    
-    // 설정 모달의 언어 선택자에서 가져오기 (모달이 열려있을 때)
-    const appLanguageSelect = document.getElementById('appLanguage');
-    if (appLanguageSelect && appLanguageSelect.value) {
-        console.log(`🌐 getCurrentUserLanguage: select 요소에서 언어 가져옴: ${appLanguageSelect.value}`);
-        return appLanguageSelect.value;
-    }
-    
-    // 기본값
-    console.log(`🌐 getCurrentUserLanguage: 기본값 사용: ko`);
     return 'ko';
 }
 
@@ -2344,6 +2309,28 @@ function getWordMeaningForLanguage(wordData, targetLanguage) {
     return meaning;
 }
 
+// 한국어 단어 호버 기능 추가
+function addKoreanWordHoverToText(text, words) {
+    if (!text || !words || words.length === 0) {
+        return text;
+    }
+    
+    let protectedText = text;
+    const processedPositions = new Set();
+    let totalMatches = 0;
+    
+    // HTML 태그 보호
+    const htmlTags = [];
+    let tagIndex = 0;
+    protectedText = protectedText.replace(/<[^>]+>/g, (match) => {
+        const placeholder = `__HTML_TAG_${tagIndex}__`;
+        htmlTags.push(match);
+        tagIndex++;
+        return placeholder;
+    });
+    
+    // 단어를 길이순으로 정렬 (긴 단어를 먼저 처리)
+    const sortedWords = [...words].sort((a, b) => (b.word?.length || 0) - (a.word?.length || 0));
     
     sortedWords.forEach(wordData => {
         const word = wordData.word;
@@ -2415,7 +2402,8 @@ function getWordMeaningForLanguage(wordData, targetLanguage) {
     return protectedText;
 }
 
-    
+// 툴팁 생성
+function createWordTooltip(wordSpan, word, meaning, pronunciation) {
     // 툴팁 생성
     const tooltip = document.createElement('div');
     tooltip.className = 'word-tooltip';
@@ -2477,12 +2465,12 @@ async function showWordTooltip(e) {
     // 텍스트 언어 감지 (data-text-language 속성 또는 단어 자체로 감지)
     const textLanguage = wordSpan.dataset.textLanguage || detectLanguage(word) || 'en';
     
-    // 사용자가 선택한 언어 가져오기
-    const userLanguage = getCurrentUserLanguage();
+    // 사용자 언어는 항상 한국어 (한국인 전용 서비스)
+    const userLanguage = 'ko';
     
     let meaning = '';
     
-    // 언어 쌍별 테이블에서 뜻 가져오기
+    // 언어 쌍별 테이블에서 뜻 가져오기 (일본어 -> 한국어)
     const result = await getWordMeaningFromLanguagePair(word, textLanguage, userLanguage);
     
     if (result) {
@@ -3299,29 +3287,8 @@ async function startLevelTest() {
 
 // 사용자의 모국어 가져오기
 async function getUserNativeLanguage() {
-    if (!AppState.currentUser || !window.supabaseClient) {
-        return 'ko'; // 기본값: 한국어
-    }
-    
-    try {
-        const supabase = window.supabaseClient;
-        const userId = AppState.currentUser.id;
-        
-        const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('native_language')
-            .eq('id', userId)
-            .single();
-        
-        if (error || !profile || !profile.native_language) {
-            return 'ko'; // 기본값: 한국어
-        }
-        
-        return profile.native_language;
-    } catch (error) {
-        console.error('모국어 가져오기 오류:', error);
-        return 'ko'; // 기본값: 한국어
-    }
+    // 한국인 전용 서비스이므로 항상 한국어 반환
+    return 'ko';
 }
 
 // 사용자의 모국어에 맞는 문제 생성 (비동기)
@@ -3396,9 +3363,9 @@ async function generateMockTestQuestionsAsync() {
 
 // 기존 함수는 호환성을 위해 유지 (동기 버전)
 function generateMockTestQuestions() {
-    // 사용자의 모국어에 맞는 문제 텍스트 반환
+    // 한국인 전용 서비스이므로 한국어로 문제 텍스트 반환
     // 실제로는 서버에서 문제를 가져와야 합니다
-    const currentLang = getCurrentUserLanguage();
+    const currentLang = 'ko';
     
     // i18n 함수 사용
     const getTranslation = (key) => {
@@ -3467,8 +3434,8 @@ function generateMockTestQuestions() {
 
 // 레벨테스트용 문제 풀 생성 (비동기로 변경하여 사용자 모국어 가져오기)
 async function generateLevelTestQuestionPoolAsync(language) {
-    // 사용자의 모국어 가져오기
-    const nativeLanguage = await getUserNativeLanguage();
+    // 한국인 전용 서비스이므로 모국어는 항상 한국어
+    const nativeLanguage = 'ko';
     
     return generateLevelTestQuestionPool(language, nativeLanguage);
 }
@@ -3585,7 +3552,8 @@ function generateLevelTestQuestionPool(language, nativeLanguage = 'ko') {
 
 // 기본 문제 생성 (단어 데이터가 없을 때) - 사용자 모국어 고려
 async function generateDefaultQuestionsAsync(language) {
-    const nativeLanguage = await getUserNativeLanguage();
+    // 한국인 전용 서비스이므로 모국어는 항상 한국어
+    const nativeLanguage = 'ko';
     return generateDefaultQuestions(language, nativeLanguage);
 }
 
@@ -3899,85 +3867,16 @@ async function showTestQuestion() {
     document.getElementById('testProgressText').textContent = `${test.currentIndex + 1} / ${totalQuestions}`;
     document.getElementById('testProgress').style.width = `${((test.currentIndex + 1) / totalQuestions) * 100}%`;
 
-    // 사용자 모국어 가져오기 (서비스 언어가 아닌 모국어 사용)
-    const userLanguage = await getUserNativeLanguage();
+    // 한국인 전용 서비스이므로 사용자 언어는 항상 한국어
+    const userLanguage = 'ko';
     const textLanguage = test.language;
     
-    console.log(`🔍 레벨테스트 번역: 텍스트 언어=${textLanguage}, 사용자 모국어=${userLanguage}`);
+    console.log(`🔍 레벨테스트: 텍스트 언어=${textLanguage}, 사용자 언어=한국어`);
     console.log(`📝 문제: ${question.word}, optionWords:`, question.optionWords);
     
-    // 선택지를 사용자 모국어로 번역
+    // 선택지는 이미 한국어로 되어있으므로 번역 불필요
     let translatedOptions = question.options;
     let correctIndex = question.correct;
-    
-    // 사용자 모국어가 한국어가 아니면 번역 필요
-    if (userLanguage && userLanguage !== 'ko') {
-        console.log('🌐 선택지 번역 시작...');
-        // 각 선택지를 사용자 언어로 번역
-        translatedOptions = await Promise.all(
-            question.options.map(async (option, idx) => {
-                // optionWords가 있으면 해당 단어로 번역
-                if (question.optionWords && question.optionWords[idx]) {
-                    const optionWord = question.optionWords[idx];
-                    if (optionWord.word) {
-                        console.log(`  선택지 ${idx + 1}: "${optionWord.word}" (${textLanguage}) -> ${userLanguage} 번역 시도`);
-                        const result = await getWordMeaningFromLanguagePair(optionWord.word, textLanguage, userLanguage);
-                        if (result && result.meaning) {
-                            console.log(`  ✅ 번역 성공: "${result.meaning}"`);
-                            return result.meaning;
-                        } else {
-                            console.log(`  ⚠️ 번역 실패: "${optionWord.word}"`);
-                        }
-                    }
-                }
-                // optionWords가 없거나 word가 비어있으면 원본 단어로 시도
-                // 정답인 경우
-                if (idx === question.correct) {
-                    console.log(`  정답 선택지 ${idx + 1}: "${question.word}" (${textLanguage}) -> ${userLanguage} 번역 시도`);
-                    const result = await getWordMeaningFromLanguagePair(question.word, textLanguage, userLanguage);
-                    if (result && result.meaning) {
-                        console.log(`  ✅ 정답 번역 성공: "${result.meaning}"`);
-                        return result.meaning;
-                    }
-                }
-                // 오답인 경우 - optionWords에서 word를 찾아서 번역 시도
-                if (question.optionWords) {
-                    // optionWords에서 현재 option과 일치하는 meaning을 가진 항목 찾기
-                    const matchingOptionWord = question.optionWords.find(ow => ow.meaning === option);
-                    if (matchingOptionWord && matchingOptionWord.word) {
-                        console.log(`  오답 선택지 ${idx + 1}: "${matchingOptionWord.word}" (${textLanguage}) -> ${userLanguage} 번역 시도`);
-                        const result = await getWordMeaningFromLanguagePair(matchingOptionWord.word, textLanguage, userLanguage);
-                        if (result && result.meaning) {
-                            console.log(`  ✅ 오답 번역 성공: "${result.meaning}"`);
-                            return result.meaning;
-                        }
-                    }
-                }
-                // 번역 실패 시 원본 사용
-                console.log(`  ⚠️ 선택지 ${idx + 1} 번역 실패, 원본 사용: "${option}"`);
-                return option;
-            })
-        );
-        
-        console.log('📋 번역된 선택지:', translatedOptions);
-        
-        // 정답 인덱스 찾기 (번역된 선택지에서)
-        const correctResult = await getWordMeaningFromLanguagePair(question.word, textLanguage, userLanguage);
-        if (correctResult && correctResult.meaning) {
-            const translatedCorrect = correctResult.meaning;
-            correctIndex = translatedOptions.findIndex(opt => opt === translatedCorrect);
-            if (correctIndex === -1) {
-                console.warn(`⚠️ 번역된 정답을 찾을 수 없음. 원본 인덱스 사용: ${question.correct}`);
-                correctIndex = question.correct; // 폴백
-            } else {
-                console.log(`✅ 정답 인덱스: ${question.correct} -> ${correctIndex}`);
-            }
-        } else {
-            console.warn(`⚠️ 정답 번역 실패. 원본 인덱스 사용: ${question.correct}`);
-        }
-    } else {
-        console.log('ℹ️ 사용자 언어가 한국어이므로 번역 불필요');
-    }
 
     // 난이도 표시
     const difficultyText = question.difficulty === 1 ? '초급' : question.difficulty === 2 ? '중급' : '고급';
@@ -4239,10 +4138,11 @@ function renderVocabularyList() {
 
 // 단어장 리스트를 비동기로 렌더링 (언어별 뜻 조회)
 async function renderVocabularyListAsync(words, certification, listElement) {
-    const userLanguage = getCurrentUserLanguage();
-    const textLanguage = certification.startsWith('jlpt') ? 'ja' : 'en';
+    // 한국인 전용 서비스이므로 사용자 언어는 항상 한국어
+    const userLanguage = 'ko';
+    const textLanguage = 'ja'; // JLPT이므로 항상 일본어
     
-    console.log(`📚 단어장 렌더링: 텍스트 언어=${textLanguage}, 사용자 언어=${userLanguage}`);
+    console.log(`📚 단어장 렌더링: 텍스트 언어=${textLanguage}, 사용자 언어=한국어`);
     
     // 먼저 로딩 상태 표시
     listElement.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">단어를 불러오는 중...</div>';
@@ -4257,21 +4157,17 @@ async function renderVocabularyListAsync(words, certification, listElement) {
         let meaning = word.meaning || word.translation || '';
         let meaningSource = 'default'; // 디버깅용
         
-        // 사용자 언어가 텍스트 언어와 다르면 언어 쌍별 테이블에서 조회
-        if (userLanguage !== textLanguage) {
-            const tableName = getLanguagePairTable(textLanguage, userLanguage);
-            console.log(`🔍 단어 "${wordText}" 조회: ${tableName} 테이블에서 검색 중...`);
-            
-            const result = await getWordMeaningFromLanguagePair(wordText, textLanguage, userLanguage);
-            if (result && result.meaning) {
-                meaning = result.meaning;
-                meaningSource = 'language_pair';
-                console.log(`✅ 단어 "${wordText}": ${tableName}에서 뜻 찾음: ${meaning}`);
-            } else {
-                console.log(`⚠️ 단어 "${wordText}": ${tableName}에서 뜻을 찾지 못함. 기본 뜻 사용: ${meaning}`);
-            }
+        // 일본어 -> 한국어 언어 쌍별 테이블에서 조회
+        const tableName = getLanguagePairTable(textLanguage, userLanguage);
+        console.log(`🔍 단어 "${wordText}" 조회: ${tableName} 테이블에서 검색 중...`);
+        
+        const result = await getWordMeaningFromLanguagePair(wordText, textLanguage, userLanguage);
+        if (result && result.meaning) {
+            meaning = result.meaning;
+            meaningSource = 'language_pair';
+            console.log(`✅ 단어 "${wordText}": ${tableName}에서 뜻 찾음: ${meaning}`);
         } else {
-            console.log(`ℹ️ 단어 "${wordText}": 같은 언어 (${textLanguage})이므로 기본 뜻 사용`);
+            console.log(`⚠️ 단어 "${wordText}": ${tableName}에서 뜻을 찾지 못함. 기본 뜻 사용: ${meaning}`);
         }
         
         return {
@@ -4301,24 +4197,26 @@ async function renderVocabularyListAsync(words, certification, listElement) {
                     </div>
                 </div>
                 <div class="vocab-actions">
-                    <button class="btn btn-secondary" onclick="showWordDetail('${wordText}', '${certification.startsWith('jlpt') ? 'ja' : 'en'}')">${typeof t === 'function' ? t('detail') : '상세'}</button>
-                    ${isLearned ? '' : `<button class="btn btn-success" onclick="markWordAsLearned('${wordText}', '${meaning}', '${certification.startsWith('jlpt') ? 'ja' : 'en'}')">${typeof t === 'function' ? t('markAsLearned') : '학습 완료'}</button>`}
+                    <button class="btn btn-secondary" onclick="showWordDetail('${wordText}', 'ja')">${typeof t === 'function' ? t('detail') : '상세'}</button>
+                    ${isLearned ? '' : `<button class="btn btn-success" onclick="markWordAsLearned('${wordText}', '${meaning}', 'ja')">${typeof t === 'function' ? t('markAsLearned') : '학습 완료'}</button>`}
                 </div>
             </div>
         `;
     }).join('');
 }
 
-// 단어를 학습 완료로 표시
+// 단어를 학습 완료로 표시 (한국인 전용 서비스이므로 항상 일본어)
 function markWordAsLearned(word, meaning, language) {
-    const existingWord = AppState.vocabulary.find(w => w.word === word && w.language === language);
+    // JLPT이므로 항상 일본어
+    const lang = 'ja';
+    const existingWord = AppState.vocabulary.find(w => w.word === word && w.language === lang);
     if (existingWord) {
         existingWord.mastered = true;
     } else {
         AppState.vocabulary.push({
             word: word,
             meaning: meaning,
-            language: language,
+            language: lang,
             mastered: true,
             reviewCount: 0
         });
@@ -4349,7 +4247,6 @@ function openAddWordModal() {
     document.getElementById('modalWord').value = '';
     document.getElementById('modalMeaning').value = '';
     document.getElementById('modalExample').value = '';
-    if (typeof updateAllTexts === 'function') updateAllTexts();
 }
 
 function closeAddWordModal() {
@@ -4391,15 +4288,6 @@ function openSettingsModal() {
     document.getElementById('settingsModal').classList.add('active');
     document.getElementById('targetCertification').value = AppState.settings.targetCertification;
     document.getElementById('dailyGoal').value = AppState.settings.dailyGoal;
-    
-    // 언어 설정 초기값 설정
-    const savedLanguage = localStorage.getItem('appLanguage') || 'ko';
-    const appLanguageSelect = document.getElementById('appLanguage');
-    if (appLanguageSelect) {
-        appLanguageSelect.value = savedLanguage;
-    }
-    
-    if (typeof updateAllTexts === 'function') updateAllTexts();
 }
 
 function closeSettingsModal() {
@@ -4409,33 +4297,6 @@ function closeSettingsModal() {
 function saveSettings() {
     AppState.settings.targetCertification = document.getElementById('targetCertification').value;
     AppState.settings.dailyGoal = parseInt(document.getElementById('dailyGoal').value);
-    
-    // 언어 설정 저장 및 적용
-    const appLanguageSelect = document.getElementById('appLanguage');
-    let selectedLanguage = 'ko';
-    if (appLanguageSelect) {
-        selectedLanguage = appLanguageSelect.value || 'ko';
-        console.log(`💾 언어 설정 저장: ${selectedLanguage}`);
-        
-        // localStorage에 직접 저장 (가장 확실한 방법)
-        localStorage.setItem('appLanguage', selectedLanguage);
-        
-        // 언어 설정 저장 및 적용
-        if (typeof setLanguage === 'function') {
-            setLanguage(selectedLanguage);
-            console.log('✅ setLanguage 함수 호출 완료:', selectedLanguage);
-        } else {
-            // setLanguage 함수가 없으면 직접 저장
-            console.log('⚠️ setLanguage 함수가 없음. localStorage에만 저장됨');
-            if (typeof updateAllTexts === 'function') {
-                updateAllTexts();
-            }
-        }
-        
-        // 저장 확인
-        const saved = localStorage.getItem('appLanguage');
-        console.log(`✅ localStorage 저장 확인: ${saved}`);
-    }
     
     // TTS 설정 저장
     const ttsRate = document.getElementById('ttsRate');
@@ -4450,14 +4311,9 @@ function saveSettings() {
     saveData();
     closeSettingsModal();
     
-    // UI 업데이트 (언어 변경 후)
+    // UI 업데이트
     updateUI();
     updateAuthUI();
-    
-    // 모든 텍스트 업데이트 (언어 변경 반영)
-    if (typeof updateAllTexts === 'function') {
-        updateAllTexts();
-    }
     
     // 현재 페이지 다시 표시하여 텍스트 업데이트
     showPage(AppState.currentPage);
@@ -4529,43 +4385,15 @@ function updateProgressPage() {
 }
 
 function getLanguageName(code) {
-    // 현재 언어에 맞게 언어명 반환
-    const currentLang = localStorage.getItem('appLanguage') || 'ko';
-    
-    if (currentLang === 'ja') {
-        const names = {
-            'en': '英語',
-            'ja': '日本語',
-            'zh': '中国語',
-            'es': 'スペイン語'
-        };
-        return names[code] || code;
-    } else if (currentLang === 'en') {
-        const names = {
-            'en': 'English',
-            'ja': 'Japanese',
-            'zh': 'Chinese',
-            'es': 'Spanish'
-        };
-        return names[code] || code;
-    } else if (currentLang === 'zh') {
-        const names = {
-            'en': '英语',
-            'ja': '日语',
-            'zh': '中文',
-            'es': '西班牙语'
-        };
-        return names[code] || code;
-    } else {
-        // 한국어 (기본)
-        const names = {
-            'en': '영어',
-            'ja': '일본어',
-            'zh': '중국어',
-            'es': '스페인어'
-        };
-        return names[code] || code;
-    }
+    // 한국인 전용 서비스이므로 한국어로 언어명 반환
+    const names = {
+        'en': '영어',
+        'ja': '일본어',
+        'zh': '중국어',
+        'es': '스페인어',
+        'ko': '한국어'
+    };
+    return names[code] || code;
 }
 
 // 사용자 데이터 로드 (Supabase Auth 세션 확인)
@@ -4677,7 +4505,6 @@ function showLoginModal() {
     document.getElementById('loginError').style.display = 'none';
     document.getElementById('loginEmail').value = '';
     document.getElementById('loginPassword').value = '';
-    if (typeof updateAllTexts === 'function') updateAllTexts();
 }
 
 // 회원가입 모달 표시
@@ -4689,7 +4516,6 @@ function showSignupModal() {
     document.getElementById('signupEmail').value = '';
     document.getElementById('signupPassword').value = '';
     document.getElementById('signupPasswordConfirm').value = '';
-    if (typeof updateAllTexts === 'function') updateAllTexts();
 }
 
 // 로그인 처리 (Supabase Auth)
@@ -4955,7 +4781,6 @@ function openAccountModal() {
     document.getElementById('accountEmail').textContent = AppState.currentUser.email;
     document.getElementById('currentPassword').value = '';
     document.getElementById('newPassword').value = '';
-    if (typeof updateAllTexts === 'function') updateAllTexts();
     document.getElementById('newPasswordConfirm').value = '';
     document.getElementById('deletePasswordConfirm').value = '';
     document.getElementById('passwordChangeError').style.display = 'none';
@@ -5238,21 +5063,11 @@ async function showOnboardingCertificationModal() {
 }
 
 async function saveNativeLanguage() {
-    const nativeLanguageSelect = document.getElementById('nativeLanguage');
-    if (!nativeLanguageSelect) return;
-    
-    const nativeLanguage = nativeLanguageSelect.value;
-    const errorDiv = document.getElementById('nativeLanguageError');
-    
-    if (!nativeLanguage) {
-        if (errorDiv) {
-            errorDiv.textContent = '모국어를 선택해주세요.';
-            errorDiv.style.display = 'block';
-        }
-        return;
-    }
+    // 한국인 전용 서비스이므로 모국어는 항상 한국어
+    const nativeLanguage = 'ko';
     
     if (!AppState.currentUser || !window.supabaseClient) {
+        const errorDiv = document.getElementById('nativeLanguageError');
         if (errorDiv) {
             errorDiv.textContent = '로그인이 필요합니다.';
             errorDiv.style.display = 'block';
@@ -5271,6 +5086,7 @@ async function saveNativeLanguage() {
         
         if (error) {
             console.error('모국어 저장 오류:', error);
+            const errorDiv = document.getElementById('nativeLanguageError');
             if (errorDiv) {
                 errorDiv.textContent = '모국어 저장 중 오류가 발생했습니다.';
                 errorDiv.style.display = 'block';
@@ -5283,6 +5099,7 @@ async function saveNativeLanguage() {
         await showOnboardingCertificationModal();
     } catch (error) {
         console.error('모국어 저장 중 예외:', error);
+        const errorDiv = document.getElementById('nativeLanguageError');
         if (errorDiv) {
             errorDiv.textContent = '모국어 저장 중 오류가 발생했습니다.';
             errorDiv.style.display = 'block';
