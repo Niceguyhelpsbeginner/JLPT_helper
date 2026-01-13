@@ -8,8 +8,8 @@
  */
 
 // Supabase 설정 (실제 값으로 변경하세요!)
-const SUPABASE_URL = 'https://cvqdlrtfycqbtzekkmkv.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2cWRscnRmeWNxYnR6ZWtrbWt2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3MjMwOTAsImV4cCI6MjA3OTI5OTA5MH0.W38de0RfvjuFXeGEl8AlP_lrlLgo4VPQHr_uOsdb6AQ';
+const SUPABASE_URL = 'https://tutkgjqmrbpspcyxfsjt.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR1dGtnanFtcmJwc3BjeXhmc2p0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyODczOTMsImV4cCI6MjA4Mzg2MzM5M30.PPKyjxoL38JwbQEnyTHy4Y6YkHqP0GgLhZ_uwAjWK8E';
 
 // Supabase 라이브러리가 로드될 때까지 기다리는 함수
 let retryCount = 0;
