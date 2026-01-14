@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
             await loadUserData();
             await loadData();
-            await loadDictionary();
+            // loadDictionary()는 독해 탭을 클릭할 때만 호출됨
             await checkOnboardingStatus(); // 온보딩 상태 확인
         } else {
             // 로그인되지 않은 상태 - 로그인 모달 자동 표시
@@ -83,6 +83,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     };
                     await loadUserData();
                     await loadData();
+                    // loadDictionary()는 독해 탭을 클릭할 때만 호출됨
                     await checkOnboardingStatus(); // 온보딩 상태 확인
                 }
             } else if (event === 'SIGNED_OUT') {
@@ -313,9 +314,9 @@ function initializeEventListeners() {
     
     // 네비게이션
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', async (e) => {
             const page = e.target.dataset.page;
-            showPage(page);
+            await showPage(page);
         });
     });
 
@@ -436,7 +437,7 @@ function initializeEventListeners() {
 }
 
 // 페이지 전환
-function showPage(pageName, skipHistoryUpdate = false) {
+async function showPage(pageName, skipHistoryUpdate = false) {
     // 로그인하지 않은 경우 접근 제한
     if (!AppState.currentUser) {
         showLoginModal();
@@ -482,6 +483,11 @@ function showPage(pageName, skipHistoryUpdate = false) {
     } else if (pageName === 'progress') {
         updateProgressPage();
     } else if (pageName === 'reading') {
+        // 독해 탭 클릭 시 사전 데이터 로드 (한자 데이터)
+        if (!AppState.singleCharacters || !AppState.singleCharacters.words || AppState.singleCharacters.words.length === 0) {
+            await loadDictionary();
+        }
+        
         // 이미지에서 추출한 텍스트가 있으면 그대로 표시, 없으면 새 지문 로드
         if (AppState.currentReadingPassage && AppState.currentReadingPassage.isFromImage) {
             // 이미지에서 추출한 텍스트가 있으면 그대로 표시
@@ -552,31 +558,69 @@ async function loadDictionary() {
         const supabase = window.supabaseClient;
         console.log('🔍 Supabase에서 사전 데이터 로드 시작...');
 
-        // 일본어 단어 로드 (복합 단어 + 단일 한자)
-        const { data: japaneseWords, error: jaError, count: jaCount } = await supabase
+        // 한자(kanji) 로드 (words 테이블)
+        const { data: kanjiWords, error: kanjiError, count: kanjiCount } = await supabase
             .from('words')
             .select('*', { count: 'exact' })
-            .eq('language', 'ja');
+            .eq('type', 'kanji');
 
-        if (jaError) {
-            console.error('❌ 일본어 단어 로드 오류:', jaError);
-            console.error('오류 상세:', JSON.stringify(jaError, null, 2));
+        // 합성어(compound words) 로드 (compound_words 테이블)
+        const { data: compoundWords, error: compoundError, count: compoundCount } = await supabase
+            .from('compound_words')
+            .select('*', { count: 'exact' })
+            .eq('type', 'word');
+
+        if (kanjiError) {
+            console.error('❌ 한자 로드 오류:', kanjiError);
+            console.error('오류 상세:', JSON.stringify(kanjiError, null, 2));
+        }
+
+        if (compoundError) {
+            console.error('❌ 합성어 로드 오류:', compoundError);
+            console.error('오류 상세:', JSON.stringify(compoundError, null, 2));
+        }
+
+        // 둘 다 오류가 있으면 JSON 파일 사용
+        if (kanjiError && compoundError) {
+            console.warn('⚠️ Supabase에서 데이터를 로드할 수 없습니다. JSON 파일을 사용합니다.');
             await loadDictionaryFromJSON(); // 폴백: JSON 파일 사용
             return;
         }
 
-        console.log(`📊 일본어 단어 조회 결과: ${japaneseWords?.length || 0}개 (총 ${jaCount || 0}개)`);
+        console.log(`📊 한자 조회 결과: ${kanjiWords?.length || 0}개 (총 ${kanjiCount || 0}개)`);
+        console.log(`📊 합성어 조회 결과: ${compoundWords?.length || 0}개 (총 ${compoundCount || 0}개)`);
 
         // 데이터가 없는 경우 JSON 파일 사용
-        if (!japaneseWords || japaneseWords.length === 0) {
+        if ((!kanjiWords || kanjiWords.length === 0) && (!compoundWords || compoundWords.length === 0)) {
             console.warn('⚠️ Supabase에 데이터가 없습니다. JSON 파일을 사용합니다.');
             await loadDictionaryFromJSON();
             return;
         }
 
         // 데이터 구조 변환
-        const singleCharactersList = (japaneseWords || []).filter(w => w.type === 'kanji');
-        const compoundWordsList = (japaneseWords || []).filter(w => w.type === 'word' && w.kanji_components && w.kanji_components.length > 1);
+        // words 테이블의 데이터를 기존 형식으로 변환 (source_word -> word, target_meaning -> meaning)
+        const singleCharactersList = (kanjiWords || []).map(w => ({
+            word: w.source_word,
+            meaning: w.target_meaning,
+            pronunciation: w.pronunciation,
+            hiragana: w.hiragana,
+            type: w.type,
+            level: w.level,
+            example: w.example
+        }));
+
+        // compound_words 테이블의 데이터를 기존 형식으로 변환
+        const compoundWordsList = (compoundWords || []).map(w => ({
+            word: w.word,
+            meaning: w.meaning,
+            pronunciation: w.pronunciation,
+            hiragana: w.hiragana,
+            type: w.type,
+            level: w.level,
+            kanji_components: w.kanji_components,
+            example: w.example,
+            synonyms: w.synonyms
+        })).filter(w => w.kanji_components && w.kanji_components.length > 1);
 
         // 합성어와 단일 한자 모두 사용
         AppState.compoundWords = { words: compoundWordsList };
@@ -589,7 +633,7 @@ async function loadDictionary() {
             ]
         };
 
-        console.log(`✅ 사전 로드 완료: 일본어 한자 ${singleCharactersList.length}개`);
+        console.log(`✅ 사전 로드 완료: 한자 ${singleCharactersList.length}개, 합성어 ${compoundWordsList.length}개`);
     } catch (error) {
         console.error('❌ 사전 로드 오류:', error);
         console.error('오류 스택:', error.stack);
@@ -751,31 +795,12 @@ async function mockDictionarySearch(word, lang) {
         word: word,
         meaning: `${word}의 의미입니다.`,
         example: `예문: ${word}를 사용한 문장입니다.`,
-        etymology: lang === 'en' ? getEnglishEtymology(word) : null,
+        etymology: null, // 영어 어원 정보 제거됨
         songs: getSongRecommendations(word, lang)
     };
 }
 
-// 영어 어원 정보 (시뮬레이션)
-function getEnglishEtymology(word) {
-    const etymologyMap = {
-        'un': { prefix: 'un-', meaning: '부정, 반대' },
-        're': { prefix: 're-', meaning: '다시, 재' },
-        'pre': { prefix: 'pre-', meaning: '이전, 미리' },
-        'tion': { suffix: '-tion', meaning: '명사형 접미사' },
-        'ly': { suffix: '-ly', meaning: '부사형 접미사' }
-    };
-
-    for (const [key, info] of Object.entries(etymologyMap)) {
-        if (word.startsWith(key) && key.length > 2) {
-            return { type: 'prefix', ...info };
-        }
-        if (word.endsWith(key)) {
-            return { type: 'suffix', ...info };
-        }
-    }
-    return null;
-}
+// getEnglishEtymology 함수 제거됨 (한국인 전용 일본어 학습 서비스이므로 영어 관련 코드 불필요)
 
 // 노래 추천 (시뮬레이션)
 function getSongRecommendations(word, lang) {
@@ -787,7 +812,7 @@ function getSongRecommendations(word, lang) {
 }
 
 // 사전 결과 표시
-function displayDictionaryResult(result, word, lang) {
+async function displayDictionaryResult(result, word, lang) {
     const resultDiv = document.getElementById('dictResult');
     
     let html = `
@@ -826,38 +851,7 @@ function displayDictionaryResult(result, word, lang) {
             }
         }
     }
-    // 일본어 특수 정보 표시
-    else if (lang === 'en') {
-        if (result.error) {
-            html += `<div style="margin: 1rem 0; padding: 1rem; background: #fee2e2; border-radius: 8px; color: #991b1b;">
-                <strong>⚠️</strong> ${result.message || '검색 결과를 찾을 수 없습니다.'}
-            </div>`;
-        } else {
-            if (result.pronunciation) {
-                html += `<div class="word-pronunciation">📢 발음: ${result.pronunciation}</div>`;
-            }
-            if (result.type) {
-                html += `<div style="margin: 0.5rem 0; padding: 0.5rem; background: #f3f4f6; border-radius: 6px;">
-                    <strong>품사:</strong> ${result.type}
-                </div>`;
-            }
-            if (result.level) {
-                html += `<div style="margin: 0.5rem 0; padding: 0.5rem; background: #f3f4f6; border-radius: 6px;">
-                    <strong>난이도:</strong> ${result.level}
-                </div>`;
-            }
-            if (result.example) {
-                html += `<div style="margin: 0.5rem 0; padding: 0.75rem; background: #fef3c7; border-radius: 6px; border-left: 3px solid #f59e0b;">
-                    <strong>예문:</strong> ${result.example}
-                </div>`;
-            }
-            if (result.synonyms && result.synonyms.length > 0) {
-                html += `<div style="margin: 0.5rem 0; padding: 0.75rem; background: #e0e7ff; border-radius: 6px;">
-                    <strong>유의어:</strong> ${result.synonyms.join(', ')}
-                </div>`;
-            }
-        }
-    }
+    // 영어 관련 코드 제거됨 (한국인 전용 일본어 학습 서비스)
 
     html += `
             <div class="word-entry-meaning">${result.meaning || (result.error ? '' : '의미 정보 없음')}</div>
@@ -873,15 +867,12 @@ function displayDictionaryResult(result, word, lang) {
 
     resultDiv.innerHTML = html;
 
-    // 한자/일본어 단어에 호버 기능 추가
-    if (lang === 'ja' || lang === 'zh') {
-        addKanjiHover(resultDiv);
+    // 일본어 단어에 호버 기능 추가 (한국인 전용 일본어 학습 서비스)
+    if (lang === 'ja') {
+        await addKanjiHover(resultDiv);
     }
 
-    // 영어 단어에 어원 호버 기능 추가
-    if (lang === 'en') {
-        addEtymologyHover(resultDiv, word);
-    }
+    // 영어 어원 호버 기능 제거됨 (한국인 전용 일본어 학습 서비스)
 }
 
 // 검색 기록에 추가 (한국인 전용 서비스이므로 항상 일본어)
@@ -996,8 +987,93 @@ function showWordDetail(word, lang) {
     modal.classList.add('active');
 }
 
+// 본문에서 필요한 합성어 추출 (한자로만 구성된 연속된 문자들)
+function extractCompoundWordsFromText(text) {
+    const kanjiRegex = /[\u4E00-\u9FAF\u3400-\u4DBF]+/g;
+    const compoundWords = new Set();
+    let match;
+    
+    while ((match = kanjiRegex.exec(text)) !== null) {
+        const word = match[0];
+        // 2자 이상인 한자 연속 문자만 합성어로 간주
+        if (word.length >= 2) {
+            compoundWords.add(word);
+        }
+    }
+    
+    return Array.from(compoundWords);
+}
+
+// 본문에서 필요한 합성어만 Supabase에서 가져오기
+async function loadCompoundWordsFromText(text) {
+    if (!window.supabaseClient) {
+        console.warn('Supabase 클라이언트가 없습니다.');
+        return new Map();
+    }
+    
+    // 본문에서 합성어 추출
+    const neededWords = extractCompoundWordsFromText(text);
+    
+    if (neededWords.length === 0) {
+        console.log('본문에서 합성어를 찾을 수 없습니다.');
+        return new Map();
+    }
+    
+    console.log(`📝 본문에서 추출한 합성어: ${neededWords.length}개`);
+    console.log('추출된 합성어 목록:', neededWords.slice(0, 20).join(', ') + (neededWords.length > 20 ? '...' : ''));
+    
+    try {
+        const supabase = window.supabaseClient;
+        
+        // Supabase에서 필요한 합성어들만 조회 (in 연산자 사용)
+        // PostgREST는 배열을 받아서 OR 조건으로 변환
+        const { data: compoundWords, error } = await supabase
+            .from('compound_words')
+            .select('word, meaning, pronunciation, hiragana, type, level, kanji_components, example, synonyms')
+            .eq('type', 'word')
+            .in('word', neededWords);
+        
+        if (error) {
+            console.error('❌ 합성어 조회 오류:', error);
+            return new Map();
+        }
+        
+        console.log(`✅ Supabase에서 ${compoundWords?.length || 0}개의 합성어를 가져왔습니다.`);
+        
+        // Map으로 변환 (빠른 검색을 위해)
+        const compoundWordMap = new Map();
+        if (compoundWords) {
+            compoundWords.forEach(wordData => {
+                // kanji_components가 있는 것만 추가
+                if (wordData.word && wordData.kanji_components && wordData.kanji_components.length > 1) {
+                    compoundWordMap.set(wordData.word, {
+                        word: wordData.word,
+                        meaning: wordData.meaning,
+                        pronunciation: wordData.pronunciation,
+                        hiragana: wordData.hiragana,
+                        type: wordData.type,
+                        level: wordData.level,
+                        kanji_components: wordData.kanji_components,
+                        example: wordData.example,
+                        synonyms: wordData.synonyms
+                    });
+                }
+            });
+        }
+        
+        // 길이순으로 정렬된 배열도 생성 (긴 단어를 먼저 매칭하기 위해)
+        const compoundWordsList = Array.from(compoundWordMap.values());
+        compoundWordsList.sort((a, b) => (b.word?.length || 0) - (a.word?.length || 0));
+        
+        return compoundWordMap;
+    } catch (error) {
+        console.error('합성어 로드 중 오류:', error);
+        return new Map();
+    }
+}
+
 // 한자 호버 기능 - 본문의 모든 한자를 hoverable로 만들기
-function addKanjiHover(container) {
+async function addKanjiHover(container) {
     // 컨테이너가 없으면 종료
     if (!container) {
         console.warn('컨테이너가 없습니다.');
@@ -1032,22 +1108,15 @@ function addKanjiHover(container) {
     console.log('=== addKanjiHover 호출됨 ===');
     console.log('text-body 내용:', textBody.innerHTML.substring(0, 100));
     
-    // 합성어 데이터 맵 생성 (빠른 검색을 위해, 길이순으로 정렬하여 긴 단어를 먼저 매칭)
-    const compoundWordsList = [];
-    if (AppState.compoundWords?.words) {
-        AppState.compoundWords.words.forEach(wordData => {
-            if (wordData.word && (wordData.kanjiComponents || wordData.kanji_components) && 
-                (wordData.kanjiComponents?.length > 1 || wordData.kanji_components?.length > 1)) {
-                compoundWordsList.push(wordData);
-            }
-        });
-    }
-    // 길이순으로 정렬 (긴 단어를 먼저)
+    // 본문 텍스트 추출
+    const fullText = textBody.textContent || textBody.innerText || '';
+    
+    // 본문에서 필요한 합성어만 Supabase에서 가져오기
+    const compoundWordMap = await loadCompoundWordsFromText(fullText);
+    
+    // 길이순으로 정렬된 배열 생성 (긴 단어를 먼저 매칭하기 위해)
+    const compoundWordsList = Array.from(compoundWordMap.values());
     compoundWordsList.sort((a, b) => (b.word?.length || 0) - (a.word?.length || 0));
-    const compoundWordMap = new Map();
-    compoundWordsList.forEach(wordData => {
-        compoundWordMap.set(wordData.word, wordData);
-    });
     
     // 한자 데이터 맵 생성 (빠른 검색을 위해)
     const kanjiMap = new Map();
@@ -1343,7 +1412,7 @@ async function attachCompoundWordHoverEvents(container) {
         
         const compoundWord = span.getAttribute('data-word');
         let meaning = span.getAttribute('data-meaning');
-        const reading = span.getAttribute('data-reading') || '';
+        let reading = span.getAttribute('data-reading') || '';
         const kanjiComponents = JSON.parse(span.getAttribute('data-kanji-components') || '[]');
         
         // 텍스트 언어는 일본어
@@ -1352,10 +1421,15 @@ async function attachCompoundWordHoverEvents(container) {
         // 사용자 언어는 항상 한국어 (한국인 전용 서비스)
         const userLanguage = 'ko';
         
-        // 언어 쌍별 테이블에서 뜻 가져오기 (일본어 -> 한국어)
+        // 언어 쌍별 테이블에서 뜻과 발음 가져오기 (일본어 -> 한국어)
         const result = await getWordMeaningFromLanguagePair(compoundWord, textLanguage, userLanguage);
-        if (result && result.meaning) {
-            meaning = result.meaning;
+        if (result) {
+            if (result.meaning) {
+                meaning = result.meaning;
+            }
+            if (result.pronunciation) {
+                reading = result.pronunciation;
+            }
         }
         
         // 각 한자의 뜻 가져오기
@@ -1388,12 +1462,12 @@ async function attachCompoundWordHoverEvents(container) {
         }
         
         if (reading) {
-            firstTooltipContent += `<div style="font-size: 0.9rem; margin-bottom: 0.5rem; color: rgba(255,255,255,0.9);">읽기: ${reading}</div>`;
+            firstTooltipContent += `<div style="font-size: 0.9rem; margin-bottom: 0.5rem; color: rgba(43, 180, 234, 0.9);">발음: ${reading}</div>`;
         }
         
         // 각 한자에 대한 클릭 가능한 영역 추가
-        firstTooltipContent += `<div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.2);">`;
-        firstTooltipContent += `<div style="font-size: 0.85rem; color: rgba(255,255,255,0.8); margin-bottom: 0.5rem;">각 한자의 뜻:</div>`;
+        firstTooltipContent += `<div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(255, 255, 255, 0.2);">`;
+        firstTooltipContent += `<div style="font-size: 0.85rem; color: rgba(10, 10, 10, 0.8); margin-bottom: 0.5rem;">각 한자의 뜻:</div>`;
         
         kanjiMeanings.forEach((item, index) => {
             firstTooltipContent += `<span class="inner-kanji-target" data-kanji="${item.kanji}" data-meaning="${item.meaning}" style="display: inline-block; margin: 0.2rem; padding: 0.3rem 0.5rem; background: rgba(255,255,255,0.1); border-radius: 4px; cursor: pointer; transition: background 0.2s;">${item.kanji}</span>`;
@@ -1472,7 +1546,7 @@ async function attachSingleKanjiHoverEvents(container) {
     
         const kanji = span.getAttribute('data-word');
         let meaning = span.getAttribute('data-meaning');
-        const reading = span.getAttribute('data-reading') || '';
+        let reading = span.getAttribute('data-reading') || '';
         const onYomi = JSON.parse(span.getAttribute('data-on-yomi') || '[]');
         const kunYomi = JSON.parse(span.getAttribute('data-kun-yomi') || '[]');
         const explanation = span.getAttribute('data-explanation') || '';
@@ -1486,10 +1560,15 @@ async function attachSingleKanjiHoverEvents(container) {
     // 사용자 언어는 항상 한국어 (한국인 전용 서비스)
     const userLanguage = 'ko';
     
-    // 언어 쌍별 테이블에서 뜻 가져오기 (일본어 -> 한국어)
+    // 언어 쌍별 테이블에서 뜻과 발음 가져오기 (일본어 -> 한국어)
     const result = await getWordMeaningFromLanguagePair(kanji, textLanguage, userLanguage);
-    if (result && result.meaning) {
-        meaning = result.meaning;
+    if (result) {
+        if (result.meaning) {
+            meaning = result.meaning;
+        }
+        if (result.pronunciation) {
+            reading = result.pronunciation;
+        }
     }
     
     // 한자 데이터에서 추가 정보 가져오기
@@ -1513,7 +1592,7 @@ async function attachSingleKanjiHoverEvents(container) {
     }
     
     if (reading) {
-        const readingLabelText = typeof t === 'function' ? t('readingLabel') : '읽기:';
+        const readingLabelText = typeof t === 'function' ? t('readingLabel') : '발음:';
             tooltipContent += `<div style="margin-bottom: 0.5rem; color: rgba(0,0,0,0.8);">${readingLabelText} ${reading}</div>`;
     }
     
@@ -1579,24 +1658,7 @@ async function attachSingleKanjiHoverEvents(container) {
 }
 
 
-// 어원 호버 기능
-function addEtymologyHover(container, word) {
-    const etymology = getEnglishEtymology(word);
-    if (!etymology) return;
-
-    container.querySelectorAll('.word-entry-title').forEach(el => {
-        const prefix = etymology.prefix || '';
-        const suffix = etymology.suffix || '';
-        const part = prefix || suffix;
-        
-        if (word.includes(part)) {
-            let html = el.innerHTML;
-            const tooltip = `<span class="etymology-tooltip">${part}: ${etymology.meaning}</span>`;
-            html = html.replace(part, `<span class="etymology-hover">${part}${tooltip}</span>`);
-            el.innerHTML = html;
-        }
-    });
-}
+// addEtymologyHover 함수 제거됨 (한국인 전용 일본어 학습 서비스이므로 영어 어원 호버 불필요)
 
 // 플래시카드
 function updateFlashcard() {
@@ -1700,8 +1762,8 @@ function displayFlashcardQuiz(word, allWords) {
 function getFilteredWords() {
     const cert = AppState.settings.targetCertification;
     
-    // 한국인 전용 서비스이므로 일본어 단어만 사용
-    let words = AppState.vocabulary.filter(w => w.language === 'ja');
+    // 한국인 전용 서비스이므로 모든 단어는 일본어 (필터링 불필요)
+    let words = AppState.vocabulary;
     
     // 자격증 필터링
     if (cert !== 'none') {
@@ -2005,7 +2067,7 @@ async function loadJLPTReadingPassage() {
         const supabase = window.supabaseClient;
         const { data: readingData, error } = await supabase
             .from('jlpt_n1_reading')
-            .select('id, passage_text, title, source, level, questions')
+            .select('id, passage_text, title, source, level, questions, explanations')
             .eq('level', level)
             .limit(1); // 첫 번째 문제 사용 (나중에 랜덤 선택 가능)
 
@@ -2031,11 +2093,13 @@ async function loadJLPTReadingPassage() {
         const readingRecord = readingData[0];
         
         // Supabase 데이터 구조를 앱에서 사용하는 구조로 변환
+        // explanations는 별도 컬럼에서 가져옴 (배열 인덱스는 questions 배열과 일치)
+        const explanations = readingRecord.explanations || [];
         const questions = readingRecord.questions.map((q, index) => ({
             question: q.question_text,
             options: q.options,
             correct: q.correct_answer,
-            explanation: q.explanation || null
+            explanation: explanations[index] || null
         }));
 
         // 현재 독해 문제 저장
@@ -2158,8 +2222,8 @@ function displayReadingPassage(passage) {
     if (allQuestionsAnswered) {
         if (passage.certType === 'jlpt') {
             // JLPT: 한자 호버 기능 추가 (내부에서 이벤트도 연결됨)
-            setTimeout(() => {
-                addKanjiHover(readingTextDiv);
+            setTimeout(async () => {
+                await addKanjiHover(readingTextDiv);
             }, 100);
         }
         
@@ -2232,22 +2296,10 @@ function displayReadingPassage(passage) {
 }
 
 
-// 현재 사용자가 선택한 언어 가져오기 (한국인 전용 서비스이므로 항상 한국어)
-function getCurrentUserLanguage() {
-    return 'ko';
-}
+// 한국인 전용 서비스이므로 사용자 언어는 항상 한국어
+// 이 함수는 제거되었으며, 모든 곳에서 직접 'ko'를 사용합니다.
 
 
-// 언어 쌍 테이블 이름 결정 (텍스트 언어 -> 사용자 언어)
-function getLanguagePairTable(textLanguage, userLanguage) {
-    // 같은 언어면 null 반환
-    if (textLanguage === userLanguage) {
-        return null;
-    }
-    
-    // 언어 쌍 테이블 이름 생성 (예: en_ja, ja_ko 등)
-    return `${textLanguage}_${userLanguage}`;
-}
 
 // 언어 쌍별 테이블에서 단어 뜻 가져오기 (비동기)
 async function getWordMeaningFromLanguagePair(word, textLanguage, userLanguage) {
@@ -2257,88 +2309,88 @@ async function getWordMeaningFromLanguagePair(word, textLanguage, userLanguage) 
         return null;
     }
     
-    // 언어 쌍 테이블 이름 결정
-    const tableName = getLanguagePairTable(textLanguage, userLanguage);
-    if (!tableName) {
-        // 같은 언어면 null 반환
-        return null;
-    }
-    
+    // words 테이블과 compound_words 테이블 모두 조회
     // 단어를 소문자로 변환하여 검색 (대소문자 무시)
     const searchWord = word.toLowerCase().trim();
     
     try {
-        // 먼저 정확한 매칭 시도
-        let { data, error } = await window.supabaseClient
-            .from(tableName)
+        // 1. words 테이블에서 먼저 조회 (한자)
+        let { data: wordsData, error: wordsError } = await window.supabaseClient
+            .from('words')
             .select('source_word, target_meaning, pronunciation')
             .eq('source_word', word) // 정확한 매칭
             .limit(1);
         
-        if (error) {
-            console.error(`언어 쌍 테이블 조회 오류 (${tableName}, 단어: "${word}"):`, error);
-            return null;
-        }
-        
-        if (data && data.length > 0) {
-            console.log(`✅ ${tableName} 테이블에서 "${word}" 정확히 찾음: "${data[0].target_meaning}"`);
+        if (!wordsError && wordsData && wordsData.length > 0) {
+            console.log(`✅ words 테이블에서 "${word}" 정확히 찾음: "${wordsData[0].target_meaning}"`);
             return {
-                meaning: data[0].target_meaning,
-                pronunciation: data[0].pronunciation || null
+                meaning: wordsData[0].target_meaning,
+                pronunciation: wordsData[0].pronunciation || null
             };
         }
         
-        // 정확한 매칭이 실패하면 대소문자 무시 검색 시도
-        const { data: caseInsensitiveData, error: caseError } = await window.supabaseClient
-            .from(tableName)
-            .select('source_word, target_meaning, pronunciation')
-            .ilike('source_word', searchWord) // 대소문자 무시 검색
+        // 2. words 테이블에서 대소문자 무시 검색
+        if (wordsError) {
+            console.warn(`words 테이블 조회 오류:`, wordsError);
+        } else {
+            const { data: wordsCaseData, error: wordsCaseError } = await window.supabaseClient
+                .from('words')
+                .select('source_word, target_meaning, pronunciation')
+                .ilike('source_word', searchWord) // 대소문자 무시 검색
+                .limit(1);
+            
+            if (!wordsCaseError && wordsCaseData && wordsCaseData.length > 0) {
+                console.log(`✅ words 테이블에서 "${word}" (대소문자 무시) 찾음: "${wordsCaseData[0].source_word}" -> "${wordsCaseData[0].target_meaning}"`);
+                return {
+                    meaning: wordsCaseData[0].target_meaning,
+                    pronunciation: wordsCaseData[0].pronunciation || null
+                };
+            }
+        }
+        
+        // 3. compound_words 테이블에서 조회 (합성어)
+        let { data: compoundData, error: compoundError } = await window.supabaseClient
+            .from('compound_words')
+            .select('word, meaning, pronunciation, hiragana')
+            .eq('word', word) // 정확한 매칭
             .limit(1);
         
-        if (!caseError && caseInsensitiveData && caseInsensitiveData.length > 0) {
-            console.log(`✅ ${tableName} 테이블에서 "${word}" (대소문자 무시) 찾음: "${caseInsensitiveData[0].source_word}" -> "${caseInsensitiveData[0].target_meaning}"`);
+        if (!compoundError && compoundData && compoundData.length > 0) {
+            console.log(`✅ compound_words 테이블에서 "${word}" 정확히 찾음: "${compoundData[0].meaning}"`);
             return {
-                meaning: caseInsensitiveData[0].target_meaning,
-                pronunciation: caseInsensitiveData[0].pronunciation || null
+                meaning: compoundData[0].meaning,
+                pronunciation: compoundData[0].pronunciation || compoundData[0].hiragana || null
             };
         }
         
-        console.log(`⚠️ ${tableName} 테이블에서 "${word}"를 찾지 못함`);
+        // 4. compound_words 테이블에서 대소문자 무시 검색
+        if (compoundError) {
+            console.warn(`compound_words 테이블 조회 오류:`, compoundError);
+        } else {
+            const { data: compoundCaseData, error: compoundCaseError } = await window.supabaseClient
+                .from('compound_words')
+                .select('word, meaning, pronunciation, hiragana')
+                .ilike('word', searchWord) // 대소문자 무시 검색
+                .limit(1);
+            
+            if (!compoundCaseError && compoundCaseData && compoundCaseData.length > 0) {
+                console.log(`✅ compound_words 테이블에서 "${word}" (대소문자 무시) 찾음: "${compoundCaseData[0].word}" -> "${compoundCaseData[0].meaning}"`);
+                return {
+                    meaning: compoundCaseData[0].meaning,
+                    pronunciation: compoundCaseData[0].pronunciation || compoundCaseData[0].hiragana || null
+                };
+            }
+        }
+        
+        console.log(`⚠️ words와 compound_words 테이블에서 "${word}"를 찾지 못함`);
         return null;
     } catch (error) {
-        console.error(`언어 쌍 테이블 조회 중 오류 (${tableName}, 단어: "${word}"):`, error);
+        console.error(`단어 조회 중 오류 (단어: "${word}"):`, error);
         return null;
     }
 }
 
-// 영어 단어의 뜻을 사용자 언어에 맞게 변환 (기존 방식 - 폴백용)
-function getWordMeaningForLanguage(wordData, targetLanguage) {
-    // 기본적으로 한국어 뜻 사용
-    let meaning = wordData.meaning || '';
-    
-    // 사용자가 선택한 언어에 따라 다른 뜻 표시
-    if (targetLanguage === 'ja') {
-        // 일본어로 표시
-        if (wordData.japaneseMeaning) {
-            meaning = wordData.japaneseMeaning;
-        }
-    } else if (targetLanguage === 'en') {
-        // 영어로 표시: 영어 단어의 영어 뜻 (definition) 표시
-        if (wordData.englishMeaning) {
-            meaning = wordData.englishMeaning;
-        } else if (wordData.example) {
-            // 예문이 있으면 예문을 표시
-            meaning = wordData.example;
-        }
-    } else if (targetLanguage === 'zh') {
-        // 중국어로 표시: 영어 단어의 중국어 뜻 찾기
-        if (wordData.chineseMeaning) {
-            meaning = wordData.chineseMeaning;
-        }
-    }
-    
-    return meaning;
-}
+// 이 함수는 제거되었습니다 (한국인 전용 일본어 학습 서비스이므로 영어/중국어 관련 코드 불필요)
 
 // 한국어 단어 호버 기능 추가
 function addKoreanWordHoverToText(text, words) {
@@ -2464,28 +2516,8 @@ function createWordTooltip(wordSpan, word, meaning, pronunciation) {
     }
 }
 
-// 영어 단어 호버 이벤트 연결 (한자는 attachKanjiHoverEvents에서 처리)
-function attachWordHoverEvents() {
-    const hoverableWords = document.querySelectorAll('.word-hoverable');
-    console.log(`영어 단어 호버 이벤트 연결: ${hoverableWords.length}개의 호버 가능한 단어를 찾았습니다.`);
-    
-    hoverableWords.forEach(wordSpan => {
-        // 이미 이벤트가 연결된 경우 건너뛰기
-        if (wordSpan.dataset.eventsAttached === 'true') {
-            return;
-        }
-        
-        // 한자는 건너뛰기 (kanji-word-hoverable 클래스가 있으면)
-        if (wordSpan.classList.contains('kanji-word-hoverable')) {
-            return;
-        }
-        
-        // 영어 단어용 이벤트만 연결
-        wordSpan.addEventListener('mouseenter', showWordTooltip);
-        wordSpan.addEventListener('mouseleave', hideWordTooltip);
-        wordSpan.dataset.eventsAttached = 'true';
-    });
-}
+// attachWordHoverEvents 함수 제거됨 (한국인 전용 일본어 학습 서비스이므로 영어 단어 호버 불필요)
+// 일본어 단어는 attachCompoundWordHoverEvents와 attachSingleKanjiHoverEvents에서 처리
 
 // 단어 툴팁 표시 (비동기 - 언어 쌍별 테이블 사용)
 async function showWordTooltip(e) {
@@ -2494,7 +2526,8 @@ async function showWordTooltip(e) {
     let pronunciation = wordSpan.dataset.pronunciation;
     
     // 텍스트 언어 감지 (data-text-language 속성 또는 단어 자체로 감지)
-    const textLanguage = wordSpan.dataset.textLanguage || detectLanguage(word) || 'en';
+    // 한국인 전용 일본어 학습 서비스이므로 일본어만 허용
+    const textLanguage = wordSpan.dataset.textLanguage || detectLanguage(word) || 'ja';
     
     // 사용자 언어는 항상 한국어 (한국인 전용 서비스)
     const userLanguage = 'ko';
@@ -2754,7 +2787,7 @@ async function extractTextWithGemini(file, loadingToast) {
 **중요 지침:**
 1. 이미지에 표시된 모든 텍스트를 정확하게 추출하세요
 2. 원본의 줄바꿈, 공백, 문단 구조를 그대로 유지하세요
-3. 일본어(히라가나, 가타카나, 한자), 영어, 숫자, 기호를 모두 정확하게 인식하세요
+3. 일본어(히라가나, 가타카나, 한자), 숫자, 기호를 모두 정확하게 인식하세요
 4. 텍스트의 방향(가로/세로)을 올바르게 인식하세요
 5. 손글씨나 흐릿한 텍스트도 최선을 다해 읽으세요
 6. 추출된 텍스트만 출력하고, 설명이나 주석은 절대 추가하지 마세요
@@ -2904,8 +2937,8 @@ async function handleImageUpload(e) {
         // OCR 품질 검사 (특수문자나 깨진 문자가 많으면)
         const totalChars = cleanedText.length;
         const japaneseChars = (cleanedText.match(/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/g) || []).length;
-        const englishChars = (cleanedText.match(/[a-zA-Z]/g) || []).length;
-        const validChars = japaneseChars + englishChars;
+        // 영어 문자 감지 제거됨 (한국인 전용 일본어 학습 서비스)
+        const validChars = japaneseChars;
         const specialChars = totalChars - validChars - (cleanedText.match(/\s/g) || []).length;
         const specialCharRatio = totalChars > 0 ? specialChars / totalChars : 0;
         const validCharRatio = totalChars > 0 ? validChars / totalChars : 0;
@@ -3012,7 +3045,7 @@ async function displayExtractedText(text, certType) {
             await new Promise(resolve => setTimeout(resolve, 100)); // DOM 업데이트 대기
             const textBody = readingTextDiv.querySelector('#text-body');
             if (textBody) {
-                addKanjiHover(readingTextDiv);
+                await addKanjiHover(readingTextDiv);
             }
         }
         
@@ -3196,43 +3229,30 @@ function detectLanguage(text) {
     if (/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(text)) {
         return 'ja';
     }
-    // 영어 문자 감지 (일본어가 아닌 경우)
-    if (/[a-zA-Z]/.test(text)) {
-        return 'en';
-    }
+    // 영어/중국어 문자 감지 제거됨 (한국인 전용 일본어 학습 서비스)
     // 한글 감지
     if (/[가-힣]/.test(text)) {
         return 'ko';
     }
-    // 중국어 감지
-    if (/[\u4E00-\u9FFF]/.test(text) && !/[\u3040-\u309F\u30A0-\u30FF]/.test(text)) {
-        return 'zh';
-    }
     return null; // 감지 실패 시 설정값 사용
 }
 
-// 언어 코드 변환
+// 언어 코드 변환 (한국인 전용 일본어 학습 서비스)
 function getLanguageCode(lang) {
     const langMap = {
         'ko': 'ko-KR',
-        'ja': 'ja-JP',
-        'en': 'en-US',
-        'zh': 'zh-CN',
-        'es': 'es-ES'
+        'ja': 'ja-JP'
     };
-    return langMap[lang] || 'en-US';
+    return langMap[lang] || 'ja-JP'; // 기본값은 일본어
 }
 
-// 언어 이름 변환
+// 언어 이름 변환 (한국인 전용 일본어 학습 서비스)
 function getLanguageName(lang) {
     const langMap = {
         'ko': '한국어',
-        'ja': '일본어',
-        'en': '영어',
-        'zh': '중국어',
-        'es': '스페인어'
+        'ja': '일본어'
     };
-    return langMap[lang] || '영어';
+    return langMap[lang] || '일본어'; // 기본값은 일본어
 }
 
 // 모의고사
@@ -3316,16 +3336,10 @@ async function startLevelTest() {
     await showTestQuestion();
 }
 
-// 사용자의 모국어 가져오기
-async function getUserNativeLanguage() {
-    // 한국인 전용 서비스이므로 항상 한국어 반환
-    return 'ko';
-}
-
 // 사용자의 모국어에 맞는 문제 생성 (비동기)
 async function generateMockTestQuestionsAsync() {
-    // 사용자의 모국어 가져오기
-    const nativeLanguage = await getUserNativeLanguage();
+    // 한국인 전용 서비스이므로 모국어는 항상 한국어
+    const nativeLanguage = 'ko';
     
     // i18n 함수 사용
     const getTranslation = (key) => {
@@ -3351,22 +3365,8 @@ async function generateMockTestQuestionsAsync() {
                 meaning3: "意味 3",
                 meaning4: "意味 4"
             },
-            en: {
-                correctGrammar: "Which of the following is correct grammar?",
-                wordMeaning: "What is the meaning of the following word?",
-                meaning1: "Meaning 1",
-                meaning2: "Meaning 2",
-                meaning3: "Meaning 3",
-                meaning4: "Meaning 4"
-            },
-            zh: {
-                correctGrammar: "下列哪一个是正确的语法？",
-                wordMeaning: "下列单词的意思是什么？",
-                meaning1: "意思 1",
-                meaning2: "意思 2",
-                meaning3: "意思 3",
-                meaning4: "意思 4"
-            }
+            // 영어 번역 제거됨 (한국인 전용 일본어 학습 서비스)
+            // 중국어 번역 제거됨 (한국인 전용 일본어 학습 서비스)
         };
         
         const lang = nativeLanguage || 'ko';
@@ -3422,22 +3422,8 @@ function generateMockTestQuestions() {
                 meaning3: "意味 3",
                 meaning4: "意味 4"
             },
-            en: {
-                correctGrammar: "Which of the following is correct grammar?",
-                wordMeaning: "What is the meaning of the following word?",
-                meaning1: "Meaning 1",
-                meaning2: "Meaning 2",
-                meaning3: "Meaning 3",
-                meaning4: "Meaning 4"
-            },
-            zh: {
-                correctGrammar: "下列哪一个是正确的语法？",
-                wordMeaning: "下列单词的意思是什么？",
-                meaning1: "意思 1",
-                meaning2: "意思 2",
-                meaning3: "意思 3",
-                meaning4: "意思 4"
-            }
+            // 영어 번역 제거됨 (한국인 전용 일본어 학습 서비스)
+            // 중국어 번역 제거됨 (한국인 전용 일본어 학습 서비스)
         };
         
         const lang = currentLang || 'ko';
@@ -3542,8 +3528,7 @@ function generateLevelTestQuestionPool(language, nativeLanguage = 'ko') {
             const questionTexts = {
                 ko: `"${wordText}"의 의미는?`,
                 ja: `"${wordText}"の意味は？`,
-                en: `What is the meaning of "${wordText}"?`,
-                zh: `"${wordText}"的意思是什么？`
+                // 영어/중국어 번역 제거됨 (한국인 전용 일본어 학습 서비스)
             };
             
             return questionTexts[nativeLanguage] || questionTexts['ko'];
@@ -3630,64 +3615,7 @@ function generateDefaultQuestions(language, nativeLanguage = 'ko') {
                 const questionTexts = {
                     ko: `"${wordText}"의 의미는?`,
                     ja: `"${wordText}"の意味は？`,
-                    en: `What is the meaning of "${wordText}"?`,
-                    zh: `"${wordText}"的意思是什么？`
-                };
-                return questionTexts[nativeLanguage] || questionTexts['ko'];
-            };
-            
-            const question = {
-                question: getQuestionText(item.word),
-                options: options,
-                correct: correctIndex,
-                difficulty: item.difficulty,
-                word: item.word,
-                meaning: item.meaning
-            };
-
-            if (item.difficulty === 1) {
-                defaultQuestions.easy.push(question);
-            } else if (item.difficulty === 2) {
-                defaultQuestions.medium.push(question);
-            } else {
-                defaultQuestions.hard.push(question);
-            }
-        });
-    } else if (language === 'en') {
-        const defaultWords = [
-            { word: 'apple', meaning: '사과', difficulty: 1 },
-            { word: 'book', meaning: '책', difficulty: 1 },
-            { word: 'cat', meaning: '고양이', difficulty: 1 },
-            { word: 'dog', meaning: '개', difficulty: 1 },
-            { word: 'house', meaning: '집', difficulty: 1 },
-            { word: 'student', meaning: '학생', difficulty: 2 },
-            { word: 'teacher', meaning: '선생님', difficulty: 2 },
-            { word: 'library', meaning: '도서관', difficulty: 2 },
-            { word: 'computer', meaning: '컴퓨터', difficulty: 2 },
-            { word: 'university', meaning: '대학교', difficulty: 2 },
-            { word: 'economy', meaning: '경제', difficulty: 3 },
-            { word: 'politics', meaning: '정치', difficulty: 3 },
-            { word: 'culture', meaning: '문화', difficulty: 3 },
-            { word: 'society', meaning: '사회', difficulty: 3 },
-            { word: 'environment', meaning: '환경', difficulty: 3 }
-        ];
-
-        defaultWords.forEach((item, idx) => {
-            const wrongOptions = defaultWords
-                .filter(w => w.word !== item.word)
-                .slice(0, 3)
-                .map(w => w.meaning);
-            
-            const options = [item.meaning, ...wrongOptions].sort(() => Math.random() - 0.5);
-            const correctIndex = options.indexOf(item.meaning);
-
-            // 사용자의 모국어에 맞는 문제 텍스트 생성
-            const getQuestionText = (wordText) => {
-                const questionTexts = {
-                    ko: `"${wordText}"의 의미는?`,
-                    ja: `"${wordText}"の意味は？`,
-                    en: `What is the meaning of "${wordText}"?`,
-                    zh: `"${wordText}"的意思是什么？`
+                    // 영어/중국어 번역 제거됨 (한국인 전용 일본어 학습 서비스)
                 };
                 return questionTexts[nativeLanguage] || questionTexts['ko'];
             };
@@ -3710,8 +3638,8 @@ function generateDefaultQuestions(language, nativeLanguage = 'ko') {
             }
         });
     } else {
-        // 한국어나 중국어의 경우 영어 기본 문제 사용
-        return generateDefaultQuestions('en');
+        // 한국인 전용 일본어 학습 서비스이므로 일본어 기본 문제 사용
+        return generateDefaultQuestions('ja');
     }
 
     return defaultQuestions;
@@ -4325,7 +4253,7 @@ function closeSettingsModal() {
     document.getElementById('settingsModal').classList.remove('active');
 }
 
-function saveSettings() {
+async function saveSettings() {
     AppState.settings.targetCertification = document.getElementById('targetCertification').value;
     AppState.settings.dailyGoal = parseInt(document.getElementById('dailyGoal').value);
     
@@ -4347,7 +4275,7 @@ function saveSettings() {
     updateAuthUI();
     
     // 현재 페이지 다시 표시하여 텍스트 업데이트
-    showPage(AppState.currentPage);
+    await showPage(AppState.currentPage);
     
     // 독해 페이지인 경우 지문 다시 표시하여 호버 기능 업데이트
     if (AppState.currentPage === 'reading' && AppState.currentReadingPassage) {
@@ -4362,9 +4290,7 @@ function saveSettings() {
     // 저장 완료 메시지
     const langNames = {
         'ko': '한국어',
-        'ja': '日本語',
-        'en': 'English',
-        'zh': '中文'
+        'ja': '日本語'
     };
     const langName = langNames[selectedLanguage] || selectedLanguage;
     showToast(`설정이 저장되었습니다. (서비스 언어: ${langName})`, 'success', 2000);
@@ -4416,15 +4342,12 @@ function updateProgressPage() {
 }
 
 function getLanguageName(code) {
-    // 한국인 전용 서비스이므로 한국어로 언어명 반환
+    // 한국인 전용 일본어 학습 서비스이므로 한국어와 일본어만 허용
     const names = {
-        'en': '영어',
         'ja': '일본어',
-        'zh': '중국어',
-        'es': '스페인어',
         'ko': '한국어'
     };
-    return names[code] || code;
+    return names[code] || '일본어'; // 기본값은 일본어
 }
 
 // 사용자 데이터 로드 (Supabase Auth 세션 확인)
@@ -4635,9 +4558,9 @@ async function handleLogin() {
             updateAuthUI();
             await loadData(); // 사용자 데이터 로드
             closeModal('loginModal');
-            enablePageAccess(); // 페이지 접근 허용
+            await enablePageAccess(); // 페이지 접근 허용
             await checkOnboardingStatus(); // 온보딩 상태 확인
-            enablePageAccess(); // 페이지 접근 허용
+            await enablePageAccess(); // 페이지 접근 허용
             await checkOnboardingStatus(); // 온보딩 상태 확인
         }
     } catch (error) {
@@ -4742,7 +4665,6 @@ async function handleSignup() {
                     id: data.user.id,
                     username: username,
                     email: email,
-                    native_language: null, // 온보딩에서 설정
                     certifications: [] // 온보딩에서 설정
                 });
 
@@ -4763,7 +4685,8 @@ async function handleSignup() {
             closeModal('signupModal');
             
             // 회원가입 직후 온보딩 시작 (페이지 접근은 온보딩 완료 후)
-            showOnboardingNativeLanguageModal();
+            // 한국인 전용 서비스이므로 모국어 선택 없이 바로 자격증 선택
+            await showOnboardingCertificationModal();
         }
     } catch (error) {
         console.error('회원가입 오류:', error);
@@ -4984,10 +4907,10 @@ async function checkOnboardingStatus() {
     const userId = AppState.currentUser.id;
     
     try {
-        // 프로필에서 모국어와 자격증 확인
+        // 프로필에서 자격증 확인 (모국어는 항상 한국어이므로 확인 불필요)
         const { data: profile, error } = await supabase
             .from('profiles')
-            .select('native_language, certifications')
+            .select('certifications')
             .eq('id', userId)
             .single();
         
@@ -4996,14 +4919,8 @@ async function checkOnboardingStatus() {
             return;
         }
         
-        // 모국어가 없으면 온보딩 시작
-        if (!profile || !profile.native_language) {
-            showOnboardingNativeLanguageModal();
-            return;
-        }
-        
         // 자격증이 없으면 자격증 선택 모달 표시
-        if (!profile.certifications || profile.certifications.length === 0) {
+        if (!profile || !profile.certifications || profile.certifications.length === 0) {
             showOnboardingCertificationModal();
             return;
         }
@@ -5038,7 +4955,7 @@ function disablePageAccess() {
     }
 }
 
-function enablePageAccess() {
+async function enablePageAccess() {
     // 네비게이션 버튼 활성화
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.style.pointerEvents = 'auto';
@@ -5046,19 +4963,7 @@ function enablePageAccess() {
     });
     
     // 홈 페이지 표시
-    showPage('home');
-}
-
-function showOnboardingNativeLanguageModal() {
-    const modal = document.getElementById('onboardingNativeLanguageModal');
-    if (modal) {
-        modal.classList.add('active');
-        const errorDiv = document.getElementById('nativeLanguageError');
-        if (errorDiv) errorDiv.style.display = 'none';
-        
-        // 페이지 접근 제한 (온보딩 완료 전까지)
-        disablePageAccess();
-    }
+    await showPage('home');
 }
 
 async function showOnboardingCertificationModal() {
@@ -5089,51 +4994,6 @@ async function showOnboardingCertificationModal() {
             } catch (error) {
                 console.error('자격증 정보 로드 오류:', error);
             }
-        }
-    }
-}
-
-async function saveNativeLanguage() {
-    // 한국인 전용 서비스이므로 모국어는 항상 한국어
-    const nativeLanguage = 'ko';
-    
-    if (!AppState.currentUser || !window.supabaseClient) {
-        const errorDiv = document.getElementById('nativeLanguageError');
-        if (errorDiv) {
-            errorDiv.textContent = '로그인이 필요합니다.';
-            errorDiv.style.display = 'block';
-        }
-        return;
-    }
-    
-    const supabase = window.supabaseClient;
-    const userId = AppState.currentUser.id;
-    
-    try {
-        const { error } = await supabase
-            .from('profiles')
-            .update({ native_language: nativeLanguage })
-            .eq('id', userId);
-        
-        if (error) {
-            console.error('모국어 저장 오류:', error);
-            const errorDiv = document.getElementById('nativeLanguageError');
-            if (errorDiv) {
-                errorDiv.textContent = '모국어 저장 중 오류가 발생했습니다.';
-                errorDiv.style.display = 'block';
-            }
-            return;
-        }
-        
-        // 다음 단계로 이동
-        closeModal('onboardingNativeLanguageModal');
-        await showOnboardingCertificationModal();
-    } catch (error) {
-        console.error('모국어 저장 중 예외:', error);
-        const errorDiv = document.getElementById('nativeLanguageError');
-        if (errorDiv) {
-            errorDiv.textContent = '모국어 저장 중 오류가 발생했습니다.';
-            errorDiv.style.display = 'block';
         }
     }
 }
@@ -5183,7 +5043,7 @@ async function saveCertifications() {
         
         // 온보딩 완료
         closeModal('onboardingCertificationModal');
-        enablePageAccess(); // 온보딩 완료 후 페이지 접근 허용
+        await enablePageAccess(); // 온보딩 완료 후 페이지 접근 허용
         showToast('온보딩이 완료되었습니다! 학습을 시작할 수 있습니다.', 'success');
         
         // 페이지 새로고침하여 학습 기능 활성화
@@ -5197,10 +5057,7 @@ async function saveCertifications() {
     }
 }
 
-function goBackToNativeLanguage() {
-    closeModal('onboardingCertificationModal');
-    showOnboardingNativeLanguageModal();
-}
+// goBackToNativeLanguage 함수 제거됨 (한국인 전용 서비스이므로 모국어 선택 불필요)
 
 // 전역 함수 (HTML에서 호출)
 window.showPage = showPage;
@@ -5222,7 +5079,5 @@ window.selectFlashcardOption = selectFlashcardOption;
 window.showWordDetail = showWordDetail;
 window.searchFromHistory = searchFromHistory;
 window.deleteWord = deleteWord;
-window.saveNativeLanguage = saveNativeLanguage;
 window.saveCertifications = saveCertifications;
-window.goBackToNativeLanguage = goBackToNativeLanguage;
 

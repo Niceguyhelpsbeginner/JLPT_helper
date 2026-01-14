@@ -411,29 +411,6 @@
             </div>
         </div>
 
-        <!-- 온보딩 모달: 모국어 선택 -->
-        <div class="modal" id="onboardingNativeLanguageModal" data-required="true">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>환영합니다</h3>
-                    <!-- 필수 온보딩이므로 닫기 버튼 없음 -->
-                </div>
-                <div class="modal-body">
-                    <p style="margin-bottom: 1.5rem;">JLPT 학습을 시작하시겠습니까?</p>
-                    <div class="form-group" style="display: none;">
-                        <label for="nativeLanguage">모국어:</label>
-                        <select id="nativeLanguage" style="width: 100%; padding: 0.75rem; font-size: 1rem;">
-                            <option value="ko" selected>🇰🇷 한국어</option>
-                        </select>
-                    </div>
-                    <div id="nativeLanguageError" style="color: var(--danger-color); margin-top: 0.5rem; display: none;"></div>
-                    <div class="modal-actions">
-                        <button class="btn btn-primary" onclick="saveNativeLanguage()">다음</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- 온보딩 모달: 자격증 선택 -->
         <div class="modal" id="onboardingCertificationModal" data-required="true">
             <div class="modal-content">
@@ -469,7 +446,6 @@
                     </div>
                     <div id="certificationError" style="color: var(--danger-color); margin-top: 0.5rem; display: none;"></div>
                     <div class="modal-actions">
-                        <button class="btn btn-secondary" onclick="goBackToNativeLanguage()">이전</button>
                         <button class="btn btn-primary" onclick="saveCertifications()">완료</button>
                     </div>
                 </div>
