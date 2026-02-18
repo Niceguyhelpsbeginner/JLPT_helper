@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jlpt-helper-ingress
+  annotations:
+    # Nginx Ingress Controller 사용 시
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Cert-Manager를 사용한 SSL 인증서 자동 발급 (선택사항)
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx  # 사용하는 Ingress Controller에 맞게 변경
+  rules:
+  - host: jlpt-helper.example.com  # 실제 도메인으로 변경
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jlpt-helper-service
+            port:
+              number: 80
+  # TLS 설정 (HTTPS 사용 시)
+  # tls:
+  # - hosts:
+  #   - jlpt-helper.example.com
+  #   secretName: jlpt-helper-tls

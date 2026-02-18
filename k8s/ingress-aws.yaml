@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jlpt-helper-ingress
+  annotations:
+    # AWS Load Balancer Controller 사용
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    # SSL 인증서 (ACM에서 발급한 인증서 ARN 사용)
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:region:account:certificate/cert-id
+    # HTTP to HTTPS 리다이렉트
+    # alb.ingress.kubernetes.io/ssl-redirect: '443'
+spec:
+  rules:
+  - host: jlpt-helper.example.com  # 실제 도메인으로 변경
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jlpt-helper-service
+            port:
+              number: 80
+  # TLS 설정 (HTTPS 사용 시)
+  # tls:
+  # - hosts:
+  #   - jlpt-helper.example.com
+  #   secretName: jlpt-helper-tls

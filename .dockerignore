@@ -1,0 +1,40 @@
+# Git 관련
+.git
+.gitignore
+.github
+
+# 문서
+*.md
+!README.md
+
+# 백업 파일
+*_backup*.csv
+*_backup*.txt
+
+# 테스트 파일
+test/
+*.test.js
+*.spec.js
+
+# 설정 파일 (예시)
+supabase_config.js.example
+
+# 스크립트 파일
+*.py
+*.ps1
+*.bat
+*.sh
+
+# Kubernetes 매니페스트 (이미지에는 불필요)
+k8s/
+
+# 배포 관련 문서
+DEPLOY.md
+AZURE_DEPLOYMENT.md
+VERCEL_FIX.md
+KUBERNETES_DEPLOYMENT.md
+
+# 기타
+node_modules
+.env
+.env.local

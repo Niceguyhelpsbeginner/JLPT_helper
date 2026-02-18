@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jlpt-helper
+  labels:
+    app: jlpt-helper
+spec:
+  replicas: 3  # 원하는 레플리카 수 (고가용성을 위해 3개 권장)
+  selector:
+    matchLabels:
+      app: jlpt-helper
+  template:
+    metadata:
+      labels:
+        app: jlpt-helper
+    spec:
+      containers:
+      - name: jlpt-helper
+        image: jlpt-helper:latest  # Docker 이미지 이름 (실제 이미지로 변경 필요)
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jlpt-helper-service
+  labels:
+    app: jlpt-helper
+spec:
+  type: LoadBalancer  # AWS에서 외부 접근을 위해 LoadBalancer 사용
+  selector:
+    app: jlpt-helper
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
